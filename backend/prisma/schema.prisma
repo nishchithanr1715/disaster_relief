@@ -1,0 +1,133 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id               String            @id @default(uuid())
+  name             String
+  email            String            @unique
+  phone            String?
+  passwordHash     String
+  role             String            @default("VICTIM") // VICTIM, VOLUNTEER, NGO_ADMIN
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  victimProfile    VictimProfile?
+  volunteerProfile VolunteerProfile?
+  ngoProfile       NGOProfile?
+  notifications    Notification[]
+  statusHistory    StatusHistory[]
+}
+
+model VictimProfile {
+  id               String         @id @default(uuid())
+  userId           String         @unique
+  user             User           @relation(fields: [userId], references: [id])
+  address          String?
+  emergencyContact String?
+  helpRequests     HelpRequest[]
+}
+
+model VolunteerProfile {
+  id                 String         @id @default(uuid())
+  userId             String         @unique
+  user               User           @relation(fields: [userId], references: [id])
+  skills             String? // Comma separated or JSON string
+  availabilityStatus Boolean        @default(true)
+  currentLat         Float?
+  currentLng         Float?
+  verified           Boolean        @default(false)
+  assignments        Assignment[]
+}
+
+model NGOProfile {
+  id               String         @id @default(uuid())
+  userId           String         @unique
+  user             User           @relation(fields: [userId], references: [id])
+  organizationName String
+  registrationId   String?
+  serviceArea      String?
+  assignments      Assignment[]
+  resources        Resource[]
+}
+
+model HelpRequest {
+  id                 String               @id @default(uuid())
+  victimId           String
+  victim             VictimProfile        @relation(fields: [victimId], references: [id])
+  requestType        String
+  description        String
+  peopleCount        Int                  @default(1)
+  latitude           Float
+  longitude          Float
+  priority           String               @default("MEDIUM") // CRITICAL, HIGH, MEDIUM, LOW
+  status             String               @default("PENDING") // PENDING, ASSIGNED, IN_PROGRESS, RESOLVED, CANCELLED
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  assignments        Assignment[]
+  resourceAllocations ResourceAllocation[]
+  statusHistory      StatusHistory[]
+}
+
+model Assignment {
+  id          String           @id @default(uuid())
+  requestId   String
+  request     HelpRequest      @relation(fields: [requestId], references: [id])
+  volunteerId String?
+  volunteer   VolunteerProfile? @relation(fields: [volunteerId], references: [id])
+  ngoId       String?
+  ngo         NGOProfile?       @relation(fields: [ngoId], references: [id])
+  assignedAt  DateTime         @default(now())
+  status      String           @default("ASSIGNED")
+  notes       String?
+}
+
+model Resource {
+  id                String               @id @default(uuid())
+  ngoId             String
+  ngo               NGOProfile           @relation(fields: [ngoId], references: [id])
+  resourceType      String
+  quantityAvailable Float
+  unit              String
+  location          String?
+  allocations       ResourceAllocation[]
+}
+
+model ResourceAllocation {
+  id                String      @id @default(uuid())
+  resourceId        String
+  resource          Resource    @relation(fields: [resourceId], references: [id])
+  requestId         String
+  request           HelpRequest @relation(fields: [requestId], references: [id])
+  quantityAllocated Float
+  status            String      @default("ALLOCATED")
+}
+
+model StatusHistory {
+  id        String      @id @default(uuid())
+  requestId String
+  request   HelpRequest @relation(fields: [requestId], references: [id])
+  changedBy String // User ID
+  user      User        @relation(fields: [changedBy], references: [id])
+  oldStatus String?
+  newStatus String
+  remarks   String?
+  createdAt DateTime    @default(now())
+}
+
+model Notification {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  title      String
+  message    String
+  readStatus Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
