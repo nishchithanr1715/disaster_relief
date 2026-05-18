@@ -8,6 +8,8 @@ import VictimDashboard from './pages/VictimDashboard';
 import NGOAdminDashboard from './pages/NGOAdminDashboard';
 import VolunteerDashboard from './pages/VolunteerDashboard';
 import ResourceManagement from './pages/ResourceManagement';
+import ChatBox from './components/ChatBox';
+import Layout from './layouts/Layout';
 
 // Placeholder components for roles
 const LandingPage = () => {
@@ -70,6 +72,14 @@ const App = () => {
             <Routes>
               <Route index element={<NGOAdminDashboard />} />
               <Route path="resources" element={<ResourceManagement />} />
+              <Route path="chat" element={
+                <Layout>
+                  <div className="max-w-4xl mx-auto">
+                    <h2 className="text-xl font-bold text-slate-900 mb-4">Command Center Chat</h2>
+                    <ChatBox />
+                  </div>
+                </Layout>
+              } />
               {/* Other admin subroutes */}
             </Routes>
           </ProtectedRoute>

@@ -15,7 +15,7 @@ const createRequest = async (req, res) => {
       return res.status(404).json({ message: 'Victim profile not found' });
     }
 
-    const priority = calculatePriority({ description, peopleCount, requestType, urgency });
+    const priority = await calculatePriority({ description, peopleCount, requestType, urgency });
 
     const request = await prisma.helpRequest.create({
       data: {

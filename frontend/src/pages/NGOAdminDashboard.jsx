@@ -12,7 +12,8 @@ import {
   Map as MapIcon, 
   List, 
   TrendingUp,
-  Filter
+  Filter,
+  Bell
 } from 'lucide-react';
 
 const NGOAdminDashboard = () => {
@@ -25,19 +26,26 @@ const NGOAdminDashboard = () => {
     queryFn: getAllRequests
   });
 
+  const [notifications, setNotifications] = useState([]);
+
   useEffect(() => {
     if (socket) {
       socket.on('new_help_request', (newRequest) => {
         queryClient.setQueryData(['allRequests'], (oldData) => {
           return [newRequest, ...(oldData || [])];
         });
-        // Could add a toast notification here
+        const message = `New ${newRequest.priority} priority request for ${newRequest.requestType}.`;
+        setNotifications(prev => [{ id: Date.now(), message }, ...prev]);
+        setTimeout(() => setNotifications(prev => prev.slice(1)), 5000);
       });
 
       socket.on('request_status_updated', (updatedRequest) => {
         queryClient.setQueryData(['allRequests'], (oldData) => {
           return oldData?.map(r => r.id === updatedRequest.id ? updatedRequest : r);
         });
+        const message = `Request status changed to ${updatedRequest.status}.`;
+        setNotifications(prev => [{ id: Date.now(), message }, ...prev]);
+        setTimeout(() => setNotifications(prev => prev.slice(1)), 5000);
       });
     }
   }, [socket, queryClient]);
@@ -63,6 +71,18 @@ const NGOAdminDashboard = () => {
 
   return (
     <Layout>
+      {/* Notifications */}
+      {notifications.length > 0 && (
+        <div className="fixed top-20 right-4 z-50 space-y-2">
+          {notifications.map(notif => (
+            <div key={notif.id} className="bg-brand-600 text-white p-4 rounded-xl shadow-lg flex items-center gap-3 animate-in slide-in-from-right max-w-sm">
+              <Bell size={20} className="animate-pulse" />
+              <p className="font-medium text-sm">{notif.message}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Operations Control Center</h1>

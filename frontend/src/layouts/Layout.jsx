@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, User, Home, Map, Package, Activity, Bell } from 'lucide-react';
+import { LogOut, User, Home, Map, Package, Activity, Bell, MessageSquare } from 'lucide-react';
 
 const Layout = ({ children }) => {
   const { user, logout } = useAuth();
@@ -19,10 +19,12 @@ const Layout = ({ children }) => {
     VOLUNTEER: [
       { label: 'Tasks', path: '/volunteer', icon: <Activity size={20} /> },
       { label: 'Map', path: '/volunteer/map', icon: <Map size={20} /> },
+      { label: 'Live Chat', path: '/volunteer/chat', icon: <MessageSquare size={20} /> },
     ],
     NGO_ADMIN: [
       { label: 'Dashboard', path: '/admin', icon: <Home size={20} /> },
       { label: 'Resources', path: '/admin/resources', icon: <Package size={20} /> },
+      { label: 'Live Chat', path: '/admin/chat', icon: <MessageSquare size={20} /> },
     ],
   };
 

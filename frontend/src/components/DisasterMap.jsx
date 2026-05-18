@@ -74,6 +74,12 @@ const DisasterMap = ({ requests = [], center = [12.9716, 77.5946], zoom = 12 }) 
                   </span>
                   <span className="text-xs font-bold text-slate-700">{request.requestType.toUpperCase()}</span>
                 </div>
+                {request.victim?.user?.name && (
+                  <div className="mb-2 pb-1 border-b border-slate-100">
+                    <p className="text-sm font-bold text-slate-900">{request.victim.user.name}</p>
+                    {request.victim?.user?.phone && <p className="text-[10px] text-slate-500">{request.victim.user.phone}</p>}
+                  </div>
+                )}
                 <p className="text-xs text-slate-600 mb-2">{request.description}</p>
                 <div className="flex justify-between items-center text-[10px] text-slate-400">
                   <span>{request.peopleCount} people</span>

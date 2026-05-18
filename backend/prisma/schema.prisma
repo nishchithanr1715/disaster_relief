@@ -24,6 +24,7 @@ model User {
   ngoProfile       NGOProfile?
   notifications    Notification[]
   statusHistory    StatusHistory[]
+  messages         Message[]
 }
 
 model VictimProfile {
@@ -130,4 +131,12 @@ model Notification {
   message    String
   readStatus Boolean  @default(false)
   createdAt  DateTime @default(now())
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
 }

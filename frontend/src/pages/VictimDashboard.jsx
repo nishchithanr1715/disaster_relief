@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getMyRequests, createHelpRequest } from '../api/requests';
 import Layout from '../layouts/Layout';
-import { Plus, MapPin, Users, AlertTriangle, Clock, CheckCircle2, XCircle, Activity } from 'lucide-react';
+import useSocket from '../hooks/useSocket';
+import { Plus, MapPin, Users, AlertTriangle, Clock, CheckCircle2, XCircle, Activity, Bell } from 'lucide-react';
 
 const VictimDashboard = () => {
   const [showForm, setShowForm] = useState(false);
@@ -10,17 +11,54 @@ const VictimDashboard = () => {
     requestType: 'rescue',
     description: '',
     peopleCount: 1,
-    latitude: 0,
-    longitude: 0,
+    latitude: '',
+    longitude: '',
     urgency: 'medium'
   });
 
   const queryClient = useQueryClient();
+  const socket = useSocket();
+  const [notifications, setNotifications] = useState([]);
 
   const { data: requests, isLoading } = useQuery({
     queryKey: ['myRequests'],
     queryFn: getMyRequests
   });
+
+  useEffect(() => {
+    if (socket && requests) {
+      const handleStatusUpdate = (updatedRequest) => {
+        // Check if the updated request belongs to this victim
+        const isMyRequest = requests.some(req => req.id === updatedRequest.id);
+        
+        if (isMyRequest) {
+          queryClient.invalidateQueries(['myRequests']);
+          
+          let message = '';
+          if (updatedRequest.status === 'IN_PROGRESS') {
+            message = `An NGO/Volunteer has accepted your ${updatedRequest.requestType} request and is on their way!`;
+          } else if (updatedRequest.status === 'RESOLVED') {
+            message = `Your ${updatedRequest.requestType} request has been marked as resolved.`;
+          } else {
+            message = `Your request status changed to ${updatedRequest.status}.`;
+          }
+          
+          setNotifications(prev => [{ id: Date.now(), message }, ...prev]);
+          
+          // Auto remove notification after 5 seconds
+          setTimeout(() => {
+            setNotifications(prev => prev.slice(1));
+          }, 5000);
+        }
+      };
+
+      socket.on('request_status_updated', handleStatusUpdate);
+
+      return () => {
+        socket.off('request_status_updated', handleStatusUpdate);
+      };
+    }
+  }, [socket, requests, queryClient]);
 
   const createMutation = useMutation({
     mutationFn: createHelpRequest,
@@ -40,14 +78,31 @@ const VictimDashboard = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // In a real app, we'd use geolocation
-    // For demo, we'll use random coords if not provided
     const payload = {
       ...formData,
-      latitude: formData.latitude || (Math.random() * 0.1 + 12.97).toFixed(6),
-      longitude: formData.longitude || (Math.random() * 0.1 + 77.59).toFixed(6)
+      latitude: formData.latitude ? parseFloat(formData.latitude) : parseFloat((Math.random() * 0.1 + 12.97).toFixed(6)),
+      longitude: formData.longitude ? parseFloat(formData.longitude) : parseFloat((Math.random() * 0.1 + 77.59).toFixed(6))
     };
     createMutation.mutate(payload);
+  };
+
+  const handleGetLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setFormData(prev => ({
+            ...prev,
+            latitude: position.coords.latitude.toFixed(6),
+            longitude: position.coords.longitude.toFixed(6)
+          }));
+        },
+        (error) => {
+          alert('Could not fetch location automatically. Please enter coordinates manually.');
+        }
+      );
+    } else {
+      alert('Geolocation is not supported by your browser.');
+    }
   };
 
   const getStatusIcon = (status) => {
@@ -71,6 +126,18 @@ const VictimDashboard = () => {
 
   return (
     <Layout>
+      {/* Notifications */}
+      {notifications.length > 0 && (
+        <div className="fixed top-20 right-4 z-50 space-y-2">
+          {notifications.map(notif => (
+            <div key={notif.id} className="bg-brand-600 text-white p-4 rounded-xl shadow-lg flex items-center gap-3 animate-in slide-in-from-right max-w-sm">
+              <Bell size={20} className="animate-pulse" />
+              <p className="font-medium text-sm">{notif.message}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Your Help Requests</h1>
@@ -150,6 +217,39 @@ const VictimDashboard = () => {
                   onChange={(e) => setFormData({...formData, description: e.target.value})}
                   required
                 />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-end mb-1">
+                  <label className="block text-sm font-medium text-slate-700">Location Coordinates</label>
+                  <button 
+                    type="button" 
+                    onClick={handleGetLocation}
+                    className="text-xs text-brand-600 font-bold hover:underline flex items-center gap-1"
+                  >
+                    <MapPin size={12} /> Get Current Location
+                  </button>
+                </div>
+                <div className="flex gap-4">
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Latitude"
+                    className="input-field w-1/2"
+                    value={formData.latitude}
+                    onChange={(e) => setFormData({...formData, latitude: e.target.value})}
+                    required
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Longitude"
+                    className="input-field w-1/2"
+                    value={formData.longitude}
+                    onChange={(e) => setFormData({...formData, longitude: e.target.value})}
+                    required
+                  />
+                </div>
               </div>
 
               <div className="pt-4 flex gap-3">

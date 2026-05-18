@@ -25,6 +25,7 @@ app.use(express.json());
 app.use('/api/auth', require('./src/routes/authRoutes'));
 app.use('/api/requests', require('./src/routes/requestRoutes'));
 app.use('/api/resources', require('./src/routes/resourceRoutes'));
+app.use('/api/chat', require('./src/routes/chatRoutes'));
 
 // Basic health check
 app.get('/health', (req, res) => {
@@ -43,6 +44,19 @@ io.on('connection', (socket) => {
   socket.on('join_room', (room) => {
     socket.join(room);
     console.log(`User ${socket.id} joined room: ${room}`);
+  });
+
+  socket.on('send_chat_message', async (data) => {
+    try {
+      const { senderId, content } = data;
+      const message = await prisma.message.create({
+        data: { senderId, content },
+        include: { sender: { select: { name: true, role: true } } }
+      });
+      io.emit('receive_chat_message', message);
+    } catch (error) {
+      console.error('Error saving chat message:', error);
+    }
   });
 
   socket.on('disconnect', () => {
