@@ -19,3 +19,8 @@ export const updateRequestStatus = async (id, statusData) => {
   const response = await api.patch(`/requests/${id}/status`, statusData);
   return response.data;
 };
+
+export const relayOfflineRequest = async (relayData) => {
+  const response = await api.post('/requests/relay', relayData);
+  return response.data;
+};

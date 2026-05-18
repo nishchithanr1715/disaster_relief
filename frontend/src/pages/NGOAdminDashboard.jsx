@@ -26,6 +26,8 @@ const NGOAdminDashboard = () => {
     queryFn: getAllRequests
   });
 
+  const [filter, setFilter] = useState('ALL'); // 'ALL', 'PENDING', 'CRITICAL', 'RESOLVED'
+
   const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
@@ -57,16 +59,28 @@ const NGOAdminDashboard = () => {
     resolved: requests?.filter(r => r.status === 'RESOLVED').length || 0,
   };
 
-  const StatCard = ({ label, value, icon, color }) => (
-    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-      <div className={`p-3 rounded-xl ${color}`}>
+  const filteredRequests = requests?.filter(request => {
+    if (filter === 'ALL') return true;
+    if (filter === 'PENDING') return request.status === 'PENDING';
+    if (filter === 'CRITICAL') return request.priority === 'CRITICAL';
+    if (filter === 'RESOLVED') return request.status === 'RESOLVED';
+    return true;
+  });
+
+  const StatCard = ({ label, value, icon, color, active, onClick }) => (
+    <button
+      onClick={onClick}
+      className={`bg-white p-6 rounded-2xl border transition-all duration-300 flex items-center gap-4 text-left w-full hover:shadow-md hover:scale-[1.02] active:scale-95 cursor-pointer
+        ${active ? 'border-brand-500 ring-2 ring-brand-500/20 shadow-md scale-[1.01]' : 'border-slate-100 shadow-sm'}`}
+    >
+      <div className={`p-3 rounded-xl transition-transform duration-300 ${active ? 'scale-110' : ''} ${color}`}>
         {icon}
       </div>
       <div>
         <p className="text-sm font-medium text-slate-500">{label}</p>
         <p className="text-2xl font-bold text-slate-900">{value}</p>
       </div>
-    </div>
+    </button>
   );
 
   return (
@@ -115,24 +129,32 @@ const NGOAdminDashboard = () => {
           value={stats.total} 
           icon={<Users size={24} />} 
           color="bg-blue-50 text-blue-600" 
+          active={filter === 'ALL'}
+          onClick={() => setFilter('ALL')}
         />
         <StatCard 
           label="Pending Help" 
           value={stats.pending} 
           icon={<Clock size={24} />} 
           color="bg-amber-50 text-amber-600" 
+          active={filter === 'PENDING'}
+          onClick={() => setFilter('PENDING')}
         />
         <StatCard 
           label="Critical Cases" 
           value={stats.critical} 
           icon={<AlertCircle size={24} />} 
           color="bg-red-50 text-red-600" 
+          active={filter === 'CRITICAL'}
+          onClick={() => setFilter('CRITICAL')}
         />
         <StatCard 
           label="Resolved" 
           value={stats.resolved} 
           icon={<CheckCircle2 size={24} />} 
           color="bg-green-50 text-green-600" 
+          active={filter === 'RESOLVED'}
+          onClick={() => setFilter('RESOLVED')}
         />
       </div>
 
@@ -143,26 +165,41 @@ const NGOAdminDashboard = () => {
           </div>
         ) : view === 'map' ? (
           <div className="h-[600px]">
-            <DisasterMap requests={requests} />
+            <DisasterMap requests={filteredRequests} />
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Victim</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Request</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Priority</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {requests?.map((request) => (
+            {filteredRequests?.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-[400px] text-slate-500">
+                <AlertCircle size={48} className="text-slate-400 mb-2 animate-bounce" />
+                <p className="font-bold text-lg">No requests matching this filter</p>
+                <p className="text-sm">Click "Total Requests" to view all active requests.</p>
+              </div>
+            ) : (
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Victim</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Request</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Priority</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredRequests?.map((request) => (
                   <tr key={request.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4">
-                      <p className="font-bold text-slate-900">{request.victim?.user?.name}</p>
-                      <p className="text-xs text-slate-500">{request.victim?.user?.phone}</p>
+                      <p className="font-bold text-slate-900">{request.victim?.user?.name || request.offlineSenderName}</p>
+                      <p className="text-xs text-slate-500">{request.victim?.user?.phone || 'Relayed Via Mesh'}</p>
+                      {request.isOfflineRelayed && (
+                        <span 
+                          className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-indigo-50 text-indigo-600 border border-indigo-100 animate-pulse cursor-help"
+                          title={`Relay Route Chain: ${request.relayChain ? JSON.parse(request.relayChain).join(' → ') : 'Direct'}`}
+                        >
+                          ⚡ Ghost Mesh ({request.relayHops} Hops)
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <p className="text-sm font-bold text-slate-900 capitalize">{request.requestType}</p>
@@ -199,6 +236,7 @@ const NGOAdminDashboard = () => {
                 ))}
               </tbody>
             </table>
+            )}
           </div>
         )}
       </div>

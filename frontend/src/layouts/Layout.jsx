@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, User, Home, Map, Package, Activity, Bell, MessageSquare } from 'lucide-react';
+import { LogOut, User, Home, Map, Package, Activity, Bell, MessageSquare, Sun, Moon, XCircle, MapPin } from 'lucide-react';
 import useSocket from '../hooks/useSocket';
+import { relayOfflineRequest } from '../api/requests';
 
 const Layout = ({ children }) => {
   const { user, logout } = useAuth();
@@ -10,24 +11,109 @@ const Layout = ({ children }) => {
   const socket = useSocket();
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [selectedRequestForModal, setSelectedRequestForModal] = useState(null);
+  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
+
+  // Sync theme class with local storage state
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  // P2P Ghost Mesh Network Relay Engine
+  useEffect(() => {
+    if (!user) return;
+
+    const meshChannel = new BroadcastChannel('reliefsync-ghost-mesh');
+
+    const handleMeshMessage = async (event) => {
+      if (event.data && event.data.type === 'OFFLINE_SOS_BROADCAST') {
+        const { packet } = event.data;
+
+        // If this node is online, act as a P2P Mesh Gateway!
+        if (navigator.onLine) {
+          if (user.role === 'VOLUNTEER' || user.role === 'NGO_ADMIN') {
+            try {
+              const currentHops = packet.hops || 0;
+              const currentChain = packet.relayChain || [];
+              const myRelaySignature = `${user.name} (${user.role === 'NGO_ADMIN' ? 'NGO' : 'Volunteer'})`;
+
+              await relayOfflineRequest({
+                senderName: packet.senderName,
+                description: packet.message,
+                peopleCount: packet.peopleCount || 1,
+                latitude: packet.latitude,
+                longitude: packet.longitude,
+                urgency: packet.urgency,
+                hops: currentHops + 1,
+                relayChain: [...currentChain, myRelaySignature]
+              });
+
+              // Add a high-visibility real-time mesh notification banner
+              setNotifications(prev => [{
+                id: Date.now(),
+                message: `⚡ Ghost Mesh: Relayed offline SOS from ${packet.senderName} (Hops: ${currentHops + 1}) successfully!`,
+                time: new Date().toLocaleTimeString()
+              }, ...prev]);
+            } catch (err) {
+              console.error("Ghost Mesh: Failed to relay packet", err);
+            }
+          }
+        }
+      }
+    };
+
+    meshChannel.addEventListener('message', handleMeshMessage);
+
+    return () => {
+      meshChannel.removeEventListener('message', handleMeshMessage);
+      meshChannel.close();
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!socket || !user) return;
 
     const handleNewRequest = (request) => {
       if (user.role === 'NGO_ADMIN' || user.role === 'VOLUNTEER') {
+        const victimName = request.victim?.user?.name || request.offlineSenderName || 'A victim';
         setNotifications(prev => [{
           id: Date.now(),
-          message: `New ${request.priority} priority request for ${request.requestType}`,
+          request: request,
+          message: `🚨 New ${request.priority} priority request for ${request.requestType} from ${victimName}`,
           time: new Date().toLocaleTimeString()
         }, ...prev]);
       }
     };
 
     const handleStatusUpdate = (updatedRequest) => {
+      const victimName = updatedRequest.victim?.user?.name || updatedRequest.offlineSenderName || 'Victim';
+      const victimUserId = updatedRequest.victim?.userId;
+      const updaterName = updatedRequest.updater?.name || 'System';
+      const updaterRole = updatedRequest.updater?.role === 'NGO_ADMIN' ? 'NGO' : 'Volunteer';
+
+      let updaterStr = `${updaterName} (${updaterRole})`;
+      if (!updatedRequest.updater) updaterStr = 'System';
+
+      let displayMessage = '';
+
+      if (user.id === victimUserId) {
+        // Logged-in user is the victim whose request was updated
+        displayMessage = `📢 Your request has been updated to ${updatedRequest.status} by ${updaterStr}`;
+      } else {
+        // Logged-in user is an NGO or Volunteer
+        displayMessage = `📢 ${victimName}'s request updated to ${updatedRequest.status} by ${updaterStr}`;
+      }
+
       setNotifications(prev => [{
         id: Date.now(),
-        message: `Request status updated to ${updatedRequest.status}`,
+        request: updatedRequest,
+        message: displayMessage,
         time: new Date().toLocaleTimeString()
       }, ...prev]);
     };
@@ -121,8 +207,16 @@ const Layout = ({ children }) => {
              <Activity size={20} />
              ReliefSync
           </div>
-          
           <div className="flex items-center gap-4 relative">
+            {/* Theme Toggle Button */}
+            <button 
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
+              title="Toggle Light/Dark Theme"
+            >
+              {isDarkMode ? <Sun size={20} className="text-amber-500" /> : <Moon size={20} />}
+            </button>
+
             <button 
               onClick={() => setShowNotifications(!showNotifications)}
               className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all relative"
@@ -149,9 +243,18 @@ const Layout = ({ children }) => {
                     <div className="p-4 text-center text-sm text-slate-500">No new notifications</div>
                   ) : (
                     notifications.map(n => (
-                      <div key={n.id} className="p-3 border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                        <p className="text-sm text-slate-700">{n.message}</p>
-                        <p className="text-xs text-slate-400 mt-1">{n.time}</p>
+                      <div 
+                        key={n.id} 
+                        onClick={() => {
+                          if (n.request) {
+                            setSelectedRequestForModal(n.request);
+                            setShowNotifications(false);
+                          }
+                        }}
+                        className="p-3 border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer flex flex-col gap-0.5 text-left"
+                      >
+                        <p className="text-sm text-slate-700 font-medium">{n.message}</p>
+                        <p className="text-[10px] text-slate-400">{n.time}</p>
                       </div>
                     ))
                   )}
@@ -174,6 +277,95 @@ const Layout = ({ children }) => {
           </div>
         </div>
       </main>
+
+      {/* Premium Request Details Global Overlay Modal */}
+      {selectedRequestForModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200 text-left">
+            <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-brand-600 text-white">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                🚨 Mission Details
+              </h3>
+              <button 
+                onClick={() => setSelectedRequestForModal(null)} 
+                className="hover:bg-white/20 p-1 rounded-lg transition-colors text-white"
+              >
+                <XCircle size={22} />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              <div className="flex justify-between items-center">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border 
+                  ${selectedRequestForModal.priority === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-100' : 
+                    selectedRequestForModal.priority === 'HIGH' ? 'bg-orange-50 text-orange-700 border-orange-100' : 
+                    'bg-blue-50 text-blue-700 border-blue-100'}`}>
+                  {selectedRequestForModal.priority} Priority
+                </span>
+                <span className="text-xs text-slate-500 font-medium">
+                  Status: <strong className="text-slate-800 uppercase">{selectedRequestForModal.status}</strong>
+                </span>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-xl space-y-1">
+                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Request Details</p>
+                <p className="text-sm font-bold text-slate-900 capitalize">
+                  Type: {selectedRequestForModal.requestType}
+                </p>
+                <p className="text-sm text-slate-700 italic">
+                  "{selectedRequestForModal.description}"
+                </p>
+                <p className="text-xs text-slate-500">
+                  <strong>People Count:</strong> {selectedRequestForModal.peopleCount}
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-xl space-y-1">
+                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Victim Contact</p>
+                <p className="text-sm font-bold text-slate-900">
+                  Name: {selectedRequestForModal.victim?.user?.name || selectedRequestForModal.offlineSenderName || 'Victim'}
+                </p>
+                <p className="text-xs text-slate-600">
+                  <strong>Phone:</strong> {selectedRequestForModal.victim?.user?.phone || 'Relayed Via Ghost Mesh'}
+                </p>
+              </div>
+
+              {selectedRequestForModal.isOfflineRelayed && (
+                <div className="bg-indigo-50/50 border border-indigo-100 p-3.5 rounded-xl space-y-1">
+                  <p className="text-xs font-bold text-indigo-700 flex items-center gap-1">
+                    ⚡ Ghost Mesh Relay Route Metrics
+                  </p>
+                  <p className="text-xs text-indigo-600">
+                    <strong>Hops:</strong> {selectedRequestForModal.relayHops} Hops
+                  </p>
+                  <p className="text-[10px] text-indigo-600 font-mono">
+                    <strong>Path:</strong> {selectedRequestForModal.relayChain ? JSON.parse(selectedRequestForModal.relayChain).join(' → ') : 'Direct'}
+                  </p>
+                </div>
+              )}
+
+              <div className="bg-slate-50 p-3.5 rounded-xl flex items-center gap-2">
+                <MapPin size={18} className="text-brand-600 shrink-0" />
+                <span className="text-xs text-slate-700 font-mono">
+                  Coordinates: {selectedRequestForModal.latitude.toFixed(6)}, {selectedRequestForModal.longitude.toFixed(6)}
+                </span>
+              </div>
+
+              <button 
+                onClick={() => {
+                  setSelectedRequestForModal(null);
+                  if (user.role === 'VOLUNTEER') {
+                    navigate('/volunteer/map', { state: { taskId: selectedRequestForModal.id } });
+                  }
+                }}
+                className="w-full btn-primary text-center justify-center flex items-center gap-2 py-2.5 text-sm"
+              >
+                {user.role === 'VOLUNTEER' ? 'View on Rescue Map' : 'Close Details'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -3,9 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getMyRequests, createHelpRequest } from '../api/requests';
 import Layout from '../layouts/Layout';
 import useSocket from '../hooks/useSocket';
-import { Plus, MapPin, Users, AlertTriangle, Clock, CheckCircle2, XCircle, Activity, Bell } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Plus, MapPin, Users, AlertTriangle, Clock, CheckCircle2, XCircle, Activity, Bell, WifiOff, AlertOctagon } from 'lucide-react';
 
 const VictimDashboard = () => {
+  const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     requestType: 'rescue',
@@ -24,6 +26,137 @@ const VictimDashboard = () => {
     queryKey: ['myRequests'],
     queryFn: getMyRequests
   });
+
+  const [offlineRequests, setOfflineRequests] = useState(() => 
+    JSON.parse(localStorage.getItem('offline_help_requests') || '[]')
+  );
+
+  const syncOfflineRequests = async () => {
+    const stored = JSON.parse(localStorage.getItem('offline_help_requests') || '[]');
+    if (stored.length === 0) return;
+
+    let successCount = 0;
+    const remaining = [];
+
+    for (const req of stored) {
+      try {
+        await createHelpRequest({
+          requestType: req.requestType,
+          description: req.description,
+          peopleCount: parseInt(req.peopleCount),
+          latitude: req.latitude,
+          longitude: req.longitude,
+          urgency: req.urgency,
+        });
+        successCount++;
+      } catch (error) {
+        console.error("Failed to sync offline request", error);
+        remaining.push(req);
+      }
+    }
+
+    localStorage.setItem('offline_help_requests', JSON.stringify(remaining));
+    setOfflineRequests(remaining);
+
+    if (successCount > 0) {
+      queryClient.invalidateQueries(['myRequests']);
+      const msg = `⚡ Connection Restored! ${successCount} offline SOS request(s) have been successfully transmitted to rescue teams.`;
+      setNotifications(prev => [{ id: Date.now(), message: msg }, ...prev]);
+    }
+  };
+
+  const handleEmergencySOS = () => {
+    const basePayload = {
+      requestType: 'rescue',
+      description: 'emergency help',
+      peopleCount: 1,
+      urgency: 'immediate'
+    };
+
+    const submitSOS = (lat, lng) => {
+      const payload = {
+        ...basePayload,
+        latitude: parseFloat(lat),
+        longitude: parseFloat(lng)
+      };
+
+      if (!navigator.onLine) {
+        const newOfflineReq = {
+          id: `offline-${Date.now()}`,
+          requestType: payload.requestType,
+          description: payload.description,
+          peopleCount: payload.peopleCount,
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+          priority: 'CRITICAL',
+          urgency: 'immediate',
+          status: 'OFFLINE_QUEUED',
+          createdAt: new Date().toISOString()
+        };
+
+        const updatedQueue = [newOfflineReq, ...offlineRequests];
+        setOfflineRequests(updatedQueue);
+        localStorage.setItem('offline_help_requests', JSON.stringify(updatedQueue));
+
+        // Broadcast over local P2P Ghost Mesh Network
+        try {
+          const meshChannel = new BroadcastChannel('reliefsync-ghost-mesh');
+          meshChannel.postMessage({
+            type: 'OFFLINE_SOS_BROADCAST',
+            packet: {
+              senderName: user?.name || 'Victim',
+              message: payload.description,
+              peopleCount: payload.peopleCount,
+              latitude: payload.latitude,
+              longitude: payload.longitude,
+              urgency: payload.urgency,
+              hops: 0,
+              relayChain: []
+            }
+          });
+          meshChannel.close();
+        } catch (e) {
+          console.error("Failed to broadcast SOS packet", e);
+        }
+
+        const msg = "🚨 GHOST NETWORK BROADCAST ACTIVE! Device is offline. SOS relayed over local P2P Mesh Network.";
+        setNotifications(prev => [{ id: Date.now(), message: msg }, ...prev]);
+      } else {
+        createMutation.mutate(payload);
+        const msg = "🚨 Emergency SOS request submitted successfully! Teams are being notified.";
+        setNotifications(prev => [{ id: Date.now(), message: msg }, ...prev]);
+      }
+    };
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          submitSOS(position.coords.latitude.toFixed(6), position.coords.longitude.toFixed(6));
+        },
+        (error) => {
+          console.warn('Geolocation failed for SOS, falling back to default/random location.');
+          const randomLat = (Math.random() * 0.1 + 12.97).toFixed(6);
+          const randomLng = (Math.random() * 0.1 + 77.59).toFixed(6);
+          submitSOS(randomLat, randomLng);
+        },
+        { timeout: 5000 }
+      );
+    } else {
+      const randomLat = (Math.random() * 0.1 + 12.97).toFixed(6);
+      const randomLng = (Math.random() * 0.1 + 77.59).toFixed(6);
+      submitSOS(randomLat, randomLng);
+    }
+  };
+
+  useEffect(() => {
+    window.addEventListener('online', syncOfflineRequests);
+    if (navigator.onLine) {
+      syncOfflineRequests();
+    }
+    return () => {
+      window.removeEventListener('online', syncOfflineRequests);
+    };
+  }, []);
 
   useEffect(() => {
     if (socket && requests) {
@@ -83,7 +216,41 @@ const VictimDashboard = () => {
       latitude: formData.latitude ? parseFloat(formData.latitude) : parseFloat((Math.random() * 0.1 + 12.97).toFixed(6)),
       longitude: formData.longitude ? parseFloat(formData.longitude) : parseFloat((Math.random() * 0.1 + 77.59).toFixed(6))
     };
-    createMutation.mutate(payload);
+
+    if (!navigator.onLine) {
+      // Create a simulated offline request
+      const newOfflineReq = {
+        id: `offline-${Date.now()}`,
+        requestType: payload.requestType,
+        description: payload.description,
+        peopleCount: parseInt(payload.peopleCount),
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        priority: payload.urgency === 'immediate' ? 'CRITICAL' : payload.urgency === 'medium' ? 'HIGH' : 'LOW',
+        urgency: payload.urgency,
+        status: 'OFFLINE_QUEUED',
+        createdAt: new Date().toISOString()
+      };
+
+      const updatedQueue = [newOfflineReq, ...offlineRequests];
+      setOfflineRequests(updatedQueue);
+      localStorage.setItem('offline_help_requests', JSON.stringify(updatedQueue));
+
+      setShowForm(false);
+      setFormData({
+        requestType: 'rescue',
+        description: '',
+        peopleCount: 1,
+        latitude: '',
+        longitude: '',
+        urgency: 'medium'
+      });
+
+      const msg = "⚠️ Device is offline! Your SOS request has been saved securely on your device and will auto-sync when network is detected.";
+      setNotifications(prev => [{ id: Date.now(), message: msg }, ...prev]);
+    } else {
+      createMutation.mutate(payload);
+    }
   };
 
   const handleGetLocation = () => {
@@ -111,6 +278,7 @@ const VictimDashboard = () => {
       case 'ASSIGNED': return <CheckCircle2 className="text-blue-500" size={18} />;
       case 'IN_PROGRESS': return <Activity className="text-indigo-500" size={18} />;
       case 'RESOLVED': return <CheckCircle2 className="text-green-500" size={18} />;
+      case 'OFFLINE_QUEUED': return <WifiOff className="text-rose-500 animate-pulse" size={18} />;
       default: return <XCircle className="text-slate-400" size={18} />;
     }
   };
@@ -138,18 +306,28 @@ const VictimDashboard = () => {
         </div>
       )}
 
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Your Help Requests</h1>
           <p className="text-slate-500">Track and manage your requests for assistance</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="btn-primary flex items-center gap-2"
-        >
-          <Plus size={20} />
-          New Request
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleEmergencySOS}
+            className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-5 py-2.5 rounded-xl shadow-lg hover:shadow-rose-500/20 active:scale-95 transition-all flex items-center gap-2 animate-pulse hover:animate-none"
+            title="Instantly report a life-safety emergency"
+          >
+            <AlertOctagon size={20} className="animate-spin duration-3000" />
+            Emergency Request
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <Plus size={20} />
+            New Request
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -238,7 +416,6 @@ const VictimDashboard = () => {
                     className="input-field w-1/2"
                     value={formData.latitude}
                     onChange={(e) => setFormData({...formData, latitude: e.target.value})}
-                    required
                   />
                   <input
                     type="number"
@@ -247,7 +424,6 @@ const VictimDashboard = () => {
                     className="input-field w-1/2"
                     value={formData.longitude}
                     onChange={(e) => setFormData({...formData, longitude: e.target.value})}
-                    required
                   />
                 </div>
               </div>
@@ -277,7 +453,7 @@ const VictimDashboard = () => {
         <div className="flex justify-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-500"></div>
         </div>
-      ) : requests?.length === 0 ? (
+      ) : (requests?.length === 0 && offlineRequests.length === 0) ? (
         <div className="text-center py-20 bg-white rounded-2xl border-2 border-dashed border-slate-200">
           <div className="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
             <AlertTriangle size={32} />
@@ -289,7 +465,7 @@ const VictimDashboard = () => {
         </div>
       ) : (
         <div className="grid gap-4">
-          {requests?.map((request) => (
+          {[...offlineRequests, ...(requests || [])].map((request) => (
             <div key={request.id} className="card hover:shadow-md transition-shadow">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex-1">

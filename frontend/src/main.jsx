@@ -5,6 +5,21 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App.jsx'
 import './index.css'
 import { AuthProvider } from './context/AuthContext.jsx'
+import { registerSW } from 'virtual:pwa-register'
+
+// Register the PWA Service Worker for offline capability
+if ('serviceWorker' in navigator) {
+  registerSW({
+    onNeedRefresh() {
+      if (confirm('A new version of ReliefSync is available! Reload now?')) {
+        window.location.reload()
+      }
+    },
+    onOfflineReady() {
+      console.log('ReliefSync is ready to work offline!')
+    }
+  })
+}
 
 const queryClient = new QueryClient()
 

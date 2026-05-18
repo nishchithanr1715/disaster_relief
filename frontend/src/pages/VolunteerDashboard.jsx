@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { getAllRequests, updateRequestStatus } from '../api/requests';
 import Layout from '../layouts/Layout';
 import DisasterMap from '../components/DisasterMap';
@@ -19,7 +19,11 @@ import {
 const VolunteerDashboard = () => {
   const queryClient = useQueryClient();
   const socket = useSocket();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [notifications, setNotifications] = useState([]);
+
+  const focusedTaskId = location.state?.taskId;
 
   const { data: requests, isLoading } = useQuery({
     queryKey: ['allRequests'],
@@ -95,12 +99,22 @@ const VolunteerDashboard = () => {
       <Routes>
         <Route path="map" element={
           <div className="h-[600px] w-full bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
-            <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <MapPin className="text-brand-600" size={20} />
-              Live Disaster Map
+            <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <MapPin className="text-brand-600" size={20} />
+                {focusedTaskId ? 'Focused Mission Location' : 'Live Disaster Map'}
+              </span>
+              {focusedTaskId && (
+                <button 
+                  onClick={() => navigate('/volunteer/map', { state: null })}
+                  className="text-xs text-brand-600 hover:underline font-extrabold"
+                >
+                  Show All Available Requests
+                </button>
+              )}
             </h2>
             <div className="h-[500px]">
-              <DisasterMap requests={pendingRequests} />
+              <DisasterMap requests={focusedTaskId ? (requests?.filter(r => r.id === focusedTaskId) || []) : pendingRequests} />
             </div>
           </div>
         } />
@@ -125,7 +139,7 @@ const VolunteerDashboard = () => {
               ) : (
                 <div className="space-y-4">
                   {myTasks.map(task => (
-                    <div key={task.id} className="bg-brand-600 text-white p-6 rounded-2xl shadow-lg shadow-brand-500/20">
+                    <div key={task.id} className="active-mission-card bg-brand-600 text-white p-6 rounded-2xl shadow-lg shadow-brand-500/20">
                       <div className="flex justify-between items-start mb-4">
                         <span className="bg-white/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
                           {task.priority} Priority
@@ -133,12 +147,24 @@ const VolunteerDashboard = () => {
                         <Clock size={18} className="opacity-60" />
                       </div>
                       <h3 className="text-xl font-bold mb-1 capitalize">{task.requestType} Needed</h3>
-                      <p className="text-white/80 text-sm mb-4 line-clamp-2">{task.description}</p>
-                      
-                      <div className="flex items-center gap-2 text-sm mb-6 bg-black/10 p-3 rounded-lg">
-                        <MapPin size={16} />
-                        <span>Lat: {task.latitude}, Lng: {task.longitude}</span>
+                      <p className="text-white/80 text-sm mb-3 line-clamp-2 italic">"{task.description}"</p>
+                      <div className="mb-4 bg-white/10 p-2.5 rounded-lg border border-white/5">
+                        <p className="text-[10px] text-white/60 font-bold uppercase tracking-wider">Victim Contact Details:</p>
+                        <p className="text-sm font-bold text-white">
+                          {task.victim?.user?.name || task.offlineSenderName || 'Victim'} 
+                          <span className="text-xs text-white/70 font-normal ml-2">
+                            • {task.victim?.user?.phone || 'Relayed Via Ghost Mesh'}
+                          </span>
+                        </p>
                       </div>
+                      <button 
+                        onClick={() => navigate('map', { state: { taskId: task.id } })}
+                        className="w-full flex items-center gap-2 text-sm mb-6 bg-black/10 p-3 rounded-lg hover:bg-black/20 hover:scale-[1.01] active:scale-95 transition-all text-left cursor-pointer border border-transparent hover:border-white/10"
+                        title="Click to view single mission on Map"
+                      >
+                        <MapPin size={16} />
+                        <span>Lat: {task.latitude}, Lng: {task.longitude} <span className="opacity-60 text-xs italic ml-1">(Click to view on Map)</span></span>
+                      </button>
                       
                       <button 
                         onClick={() => resolveMutation.mutate(task.id)}
@@ -172,7 +198,7 @@ const VolunteerDashboard = () => {
                 <div className="space-y-4">
                   {pendingRequests.map(request => (
                     <div key={request.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-brand-300 transition-all">
-                      <div className="flex items-center gap-3 mb-3">
+                      <div className="flex items-center gap-3 mb-3 w-full">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border
                           ${request.priority === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-100' : 
                             request.priority === 'HIGH' ? 'bg-orange-50 text-orange-700 border-orange-100' : 
@@ -180,8 +206,25 @@ const VolunteerDashboard = () => {
                           {request.priority}
                         </span>
                         <span className="text-xs text-slate-400 capitalize">{request.requestType} • {request.peopleCount} people</span>
+                        {request.isOfflineRelayed && (
+                          <span 
+                            className="ml-auto px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-indigo-50 text-indigo-600 border border-indigo-100 animate-pulse cursor-help"
+                            title={`Relay Route Chain: ${request.relayChain ? JSON.parse(request.relayChain).join(' → ') : 'Direct'}`}
+                          >
+                            ⚡ Mesh ({request.relayHops} Hops)
+                          </span>
+                        )}
                       </div>
-                      <p className="text-slate-700 text-sm font-medium mb-4">{request.description}</p>
+                      <div className="mb-3 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Requested By:</p>
+                        <p className="text-sm font-bold text-slate-800">
+                          {request.victim?.user?.name || request.offlineSenderName || 'Victim'} 
+                          <span className="text-xs text-slate-400 font-normal ml-2">
+                            • {request.victim?.user?.phone || 'Relayed Via Ghost Mesh'}
+                          </span>
+                        </p>
+                      </div>
+                      <p className="text-slate-700 text-sm font-medium mb-4 italic">"{request.description}"</p>
                       <button 
                         onClick={() => acceptMutation.mutate(request.id)}
                         disabled={acceptMutation.isPending}
