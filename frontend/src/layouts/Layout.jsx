@@ -1,11 +1,45 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, User, Home, Map, Package, Activity, Bell, MessageSquare } from 'lucide-react';
+import useSocket from '../hooks/useSocket';
 
 const Layout = ({ children }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const socket = useSocket();
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+
+  useEffect(() => {
+    if (!socket || !user) return;
+
+    const handleNewRequest = (request) => {
+      if (user.role === 'NGO_ADMIN' || user.role === 'VOLUNTEER') {
+        setNotifications(prev => [{
+          id: Date.now(),
+          message: `New ${request.priority} priority request for ${request.requestType}`,
+          time: new Date().toLocaleTimeString()
+        }, ...prev]);
+      }
+    };
+
+    const handleStatusUpdate = (updatedRequest) => {
+      setNotifications(prev => [{
+        id: Date.now(),
+        message: `Request status updated to ${updatedRequest.status}`,
+        time: new Date().toLocaleTimeString()
+      }, ...prev]);
+    };
+
+    socket.on('new_help_request', handleNewRequest);
+    socket.on('request_status_updated', handleStatusUpdate);
+
+    return () => {
+      socket.off('new_help_request', handleNewRequest);
+      socket.off('request_status_updated', handleStatusUpdate);
+    };
+  }, [socket, user]);
 
   const handleLogout = () => {
     logout();
@@ -88,10 +122,43 @@ const Layout = ({ children }) => {
              ReliefSync
           </div>
           
-          <div className="flex items-center gap-4">
-            <button className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all">
+          <div className="flex items-center gap-4 relative">
+            <button 
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all relative"
+            >
               <Bell size={20} />
+              {notifications.length > 0 && (
+                <>
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></span>
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                </>
+              )}
             </button>
+
+            {showNotifications && (
+              <div className="absolute top-12 right-0 md:right-12 w-80 bg-white border border-slate-200 shadow-xl rounded-xl z-50 overflow-hidden">
+                <div className="bg-slate-50 border-b border-slate-200 p-3 flex justify-between items-center">
+                  <h3 className="font-bold text-slate-800 text-sm">Notifications</h3>
+                  {notifications.length > 0 && (
+                    <button onClick={() => setNotifications([])} className="text-xs text-brand-600 hover:underline">Clear all</button>
+                  )}
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-slate-500">No new notifications</div>
+                  ) : (
+                    notifications.map(n => (
+                      <div key={n.id} className="p-3 border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <p className="text-sm text-slate-700">{n.message}</p>
+                        <p className="text-xs text-slate-400 mt-1">{n.time}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="md:hidden">
                <button onClick={handleLogout} className="p-2 text-red-500">
                  <LogOut size={20} />
