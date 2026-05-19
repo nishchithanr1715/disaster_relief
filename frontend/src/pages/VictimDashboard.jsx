@@ -149,24 +149,52 @@ const VictimDashboard = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          submitSOS(position.coords.latitude.toFixed(6), position.coords.longitude.toFixed(6));
+          const lat = position.coords.latitude.toFixed(6);
+          const lng = position.coords.longitude.toFixed(6);
+          localStorage.setItem('reliefsync_last_location', JSON.stringify({ lat, lng }));
+          submitSOS(lat, lng);
         },
         (error) => {
-          console.warn('Geolocation failed for SOS, falling back to default/random location.');
-          const randomLat = (Math.random() * 0.1 + 12.97).toFixed(6);
-          const randomLng = (Math.random() * 0.1 + 77.59).toFixed(6);
-          submitSOS(randomLat, randomLng);
+          console.warn('Geolocation failed for SOS, checking last cached location.');
+          const cached = localStorage.getItem('reliefsync_last_location');
+          if (cached) {
+            const { lat, lng } = JSON.parse(cached);
+            submitSOS(lat, lng);
+          } else {
+            const randomLat = (Math.random() * 0.1 + 12.97).toFixed(6);
+            const randomLng = (Math.random() * 0.1 + 77.59).toFixed(6);
+            submitSOS(randomLat, randomLng);
+          }
         },
         { timeout: 5000 }
       );
     } else {
-      const randomLat = (Math.random() * 0.1 + 12.97).toFixed(6);
-      const randomLng = (Math.random() * 0.1 + 77.59).toFixed(6);
-      submitSOS(randomLat, randomLng);
+      const cached = localStorage.getItem('reliefsync_last_location');
+      if (cached) {
+        const { lat, lng } = JSON.parse(cached);
+        submitSOS(lat, lng);
+      } else {
+        const randomLat = (Math.random() * 0.1 + 12.97).toFixed(6);
+        const randomLng = (Math.random() * 0.1 + 77.59).toFixed(6);
+        submitSOS(randomLat, randomLng);
+      }
     }
   };
 
   useEffect(() => {
+    // Initial fetch to cache real location coordinates immediately on dashboard open
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude.toFixed(6);
+          const lng = position.coords.longitude.toFixed(6);
+          localStorage.setItem('reliefsync_last_location', JSON.stringify({ lat, lng }));
+        },
+        (err) => console.warn("Init location cache deferred:", err.message),
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+
     window.addEventListener('online', syncOfflineRequests);
     if (navigator.onLine) {
       syncOfflineRequests();
@@ -229,10 +257,23 @@ const VictimDashboard = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    
+    let finalLat = formData.latitude;
+    let finalLng = formData.longitude;
+
+    if (!finalLat || !finalLng) {
+      const cached = localStorage.getItem('reliefsync_last_location');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        finalLat = finalLat || parsed.lat;
+        finalLng = finalLng || parsed.lng;
+      }
+    }
+
     const payload = {
       ...formData,
-      latitude: formData.latitude ? parseFloat(formData.latitude) : parseFloat((Math.random() * 0.1 + 12.97).toFixed(6)),
-      longitude: formData.longitude ? parseFloat(formData.longitude) : parseFloat((Math.random() * 0.1 + 77.59).toFixed(6))
+      latitude: finalLat ? parseFloat(finalLat) : parseFloat((Math.random() * 0.1 + 12.97).toFixed(6)),
+      longitude: finalLng ? parseFloat(finalLng) : parseFloat((Math.random() * 0.1 + 77.59).toFixed(6))
     };
 
     if (!navigator.onLine) {
@@ -275,10 +316,13 @@ const VictimDashboard = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          const lat = position.coords.latitude.toFixed(6);
+          const lng = position.coords.longitude.toFixed(6);
+          localStorage.setItem('reliefsync_last_location', JSON.stringify({ lat, lng }));
           setFormData(prev => ({
             ...prev,
-            latitude: position.coords.latitude.toFixed(6),
-            longitude: position.coords.longitude.toFixed(6)
+            latitude: lat,
+            longitude: lng
           }));
         },
         (error) => {

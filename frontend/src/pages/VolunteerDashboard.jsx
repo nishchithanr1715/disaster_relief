@@ -140,11 +140,14 @@ const VolunteerDashboard = () => {
                 <div className="space-y-4">
                   {myTasks.map(task => (
                     <div key={task.id} className="active-mission-card bg-brand-600 text-white p-6 rounded-2xl shadow-lg shadow-brand-500/20">
-                      <div className="flex justify-between items-start mb-4">
+                      <div className="flex justify-between items-center mb-4 w-full">
                         <span className="bg-white/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
                           {task.priority} Priority
                         </span>
-                        <Clock size={18} className="opacity-60" />
+                        <div className="flex items-center gap-1.5 opacity-80 text-xs font-bold">
+                          <Clock size={14} />
+                          <span>{new Date(task.createdAt).toLocaleString()}</span>
+                        </div>
                       </div>
                       <h3 className="text-xl font-bold mb-1 capitalize">{task.requestType} Needed</h3>
                       <p className="text-white/80 text-sm mb-3 line-clamp-2 italic">"{task.description}"</p>
@@ -206,6 +209,10 @@ const VolunteerDashboard = () => {
                           {request.priority}
                         </span>
                         <span className="text-xs text-slate-400 capitalize">{request.requestType} • {request.peopleCount} people</span>
+                        <span className="text-xs text-slate-400 font-bold ml-2 flex items-center gap-1">
+                          <Clock size={12} className="text-slate-400" />
+                          {new Date(request.createdAt).toLocaleString()}
+                        </span>
                         {request.isOfflineRelayed && (
                           <span 
                             className="ml-auto px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-indigo-50 text-indigo-600 border border-indigo-100 animate-pulse cursor-help"

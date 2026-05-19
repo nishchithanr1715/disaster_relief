@@ -182,6 +182,7 @@ const NGOAdminDashboard = () => {
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Victim</th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Request</th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Priority</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1"><Clock size={12} /> Time</th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Action</th>
                   </tr>
@@ -211,6 +212,12 @@ const NGOAdminDashboard = () => {
                           request.priority === 'HIGH' ? 'bg-orange-50 text-orange-700 border-orange-100' : 
                           'bg-blue-50 text-blue-700 border-blue-100'}`}>
                         {request.priority}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                        <Clock size={12} className="text-slate-400" />
+                        {new Date(request.createdAt).toLocaleString()}
                       </span>
                     </td>
                     <td className="px-6 py-4">

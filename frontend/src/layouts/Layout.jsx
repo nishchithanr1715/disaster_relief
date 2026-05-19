@@ -81,34 +81,32 @@ const Layout = ({ children }) => {
     if (!user || !socket) return;
 
     const handleSocketMeshMessage = async (packet) => {
-      // If this node is online (connected to server), act as the gateway
-      if (navigator.onLine) {
-        if (user.role === 'VOLUNTEER' || user.role === 'NGO_ADMIN') {
-          try {
-            const currentHops = packet.hops || 0;
-            const currentChain = packet.relayChain || [];
-            const myRelaySignature = `${user.name} (${user.role === 'NGO_ADMIN' ? 'NGO' : 'Volunteer'})`;
+      if (user.role === 'VOLUNTEER' || user.role === 'NGO_ADMIN') {
+        const currentHops = packet.hops || 0;
+        const currentChain = packet.relayChain || [];
+        const myRelaySignature = `${user.name} (${user.role === 'NGO_ADMIN' ? 'NGO' : 'Volunteer'})`;
 
-            await relayOfflineRequest({
-              senderName: packet.senderName,
-              description: packet.message,
-              peopleCount: packet.peopleCount || 1,
-              latitude: packet.latitude,
-              longitude: packet.longitude,
-              urgency: packet.urgency,
-              hops: currentHops + 1,
-              relayChain: [...currentChain, myRelaySignature]
-            });
+        // 1. Immediately show real-time mesh notification on screen with 0 delay!
+        setNotifications(prev => [{
+          id: Date.now(),
+          message: `🚨 GHOST MESH: Received offline SOS from ${packet.senderName}! Relaying request...`,
+          time: new Date().toLocaleTimeString()
+        }, ...prev]);
 
-            // Add real-time high-visibility notification
-            setNotifications(prev => [{
-              id: Date.now(),
-              message: `⚡ Ghost Mesh: Relayed offline SOS from ${packet.senderName} (Hops: ${currentHops + 1}) successfully!`,
-              time: new Date().toLocaleTimeString()
-            }, ...prev]);
-          } catch (err) {
-            console.error("Ghost Mesh: Failed to relay socket packet", err);
-          }
+        // 2. Gateway Relay: Relay it to the central database to sync all dashboards
+        try {
+          await relayOfflineRequest({
+            senderName: packet.senderName,
+            description: packet.message,
+            peopleCount: packet.peopleCount || 1,
+            latitude: packet.latitude,
+            longitude: packet.longitude,
+            urgency: packet.urgency,
+            hops: currentHops + 1,
+            relayChain: [...currentChain, myRelaySignature]
+          });
+        } catch (err) {
+          console.error("Ghost Mesh: Failed to relay socket packet to DB", err);
         }
       }
     };
@@ -275,7 +273,7 @@ const Layout = ({ children }) => {
             </button>
 
             {showNotifications && (
-              <div className="absolute top-12 right-0 md:right-12 w-80 bg-white border border-slate-200 shadow-xl rounded-xl z-50 overflow-hidden">
+              <div className="absolute top-12 right-0 md:right-12 w-80 bg-white border border-slate-200 shadow-xl rounded-xl z-[9999] overflow-hidden">
                 <div className="bg-slate-50 border-b border-slate-200 p-3 flex justify-between items-center">
                   <h3 className="font-bold text-slate-800 text-sm">Notifications</h3>
                   {notifications.length > 0 && (
@@ -324,7 +322,7 @@ const Layout = ({ children }) => {
 
       {/* Premium Request Details Global Overlay Modal */}
       {selectedRequestForModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200 text-left">
             <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-brand-600 text-white">
               <h3 className="text-lg font-bold flex items-center gap-2">
