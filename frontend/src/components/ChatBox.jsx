@@ -23,7 +23,7 @@ const ChatBox = () => {
     }
   }, [initialMessages]);
 
-  // P2P Ghost Chat Mesh Engine
+  // P2P Ghost Chat Mesh Engine (BroadcastChannel)
   useEffect(() => {
     const chatMeshChannel = new BroadcastChannel('reliefsync-ghost-chat');
 
@@ -51,6 +51,33 @@ const ChatBox = () => {
     return () => {
       chatMeshChannel.removeEventListener('message', handleMeshMessage);
       chatMeshChannel.close();
+    };
+  }, [socket]);
+
+  // Peer-to-Peer Socket Mesh Listener (Simulates radio wave chat across separate physical devices)
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleSocketMeshChat = (packet) => {
+      // Add to UI immediately
+      setMessages(prev => {
+        if (prev.some(m => m.id === packet.id || (m.content === packet.content && m.senderId === packet.senderId))) return prev;
+        return [...prev, packet];
+      });
+
+      // Gateway Relay Mode: If THIS peer is online (connected to server), relay it to DB
+      if (socket.connected) {
+        socket.emit('send_chat_message', {
+          senderId: packet.senderId,
+          content: packet.content
+        });
+      }
+    };
+
+    socket.on('mesh_receive_chat', handleSocketMeshChat);
+
+    return () => {
+      socket.off('mesh_receive_chat', handleSocketMeshChat);
     };
   }, [socket]);
 
@@ -140,6 +167,11 @@ const ChatBox = () => {
         packet: newMsg
       });
       chatMeshChannel.close();
+
+      // Broadcast P2P over socket radio simulation for separate physical devices
+      if (socket) {
+        socket.emit('mesh_broadcast_chat', newMsg);
+      }
 
       // Save in offline outbox queue to sync when internet resumes
       const queue = JSON.parse(localStorage.getItem('reliefsync_offline_chat_queue') || '[]');

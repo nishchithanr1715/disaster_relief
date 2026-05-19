@@ -6,8 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model User {
@@ -70,6 +70,10 @@ model HelpRequest {
   longitude          Float
   priority           String               @default("MEDIUM") // CRITICAL, HIGH, MEDIUM, LOW
   status             String               @default("PENDING") // PENDING, ASSIGNED, IN_PROGRESS, RESOLVED, CANCELLED
+  isOfflineRelayed   Boolean?             @default(false)
+  offlineSenderName  String?
+  relayHops          Int?                 @default(0)
+  relayChain         String?              // Stored as JSON or comma-separated string
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
   assignments        Assignment[]

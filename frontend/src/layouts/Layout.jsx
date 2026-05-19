@@ -76,6 +76,50 @@ const Layout = ({ children }) => {
     };
   }, [user]);
 
+  // Peer-to-Peer Socket Mesh Listener (Simulates radio wave propagation across separate physical devices)
+  useEffect(() => {
+    if (!user || !socket) return;
+
+    const handleSocketMeshMessage = async (packet) => {
+      // If this node is online (connected to server), act as the gateway
+      if (navigator.onLine) {
+        if (user.role === 'VOLUNTEER' || user.role === 'NGO_ADMIN') {
+          try {
+            const currentHops = packet.hops || 0;
+            const currentChain = packet.relayChain || [];
+            const myRelaySignature = `${user.name} (${user.role === 'NGO_ADMIN' ? 'NGO' : 'Volunteer'})`;
+
+            await relayOfflineRequest({
+              senderName: packet.senderName,
+              description: packet.message,
+              peopleCount: packet.peopleCount || 1,
+              latitude: packet.latitude,
+              longitude: packet.longitude,
+              urgency: packet.urgency,
+              hops: currentHops + 1,
+              relayChain: [...currentChain, myRelaySignature]
+            });
+
+            // Add real-time high-visibility notification
+            setNotifications(prev => [{
+              id: Date.now(),
+              message: `⚡ Ghost Mesh: Relayed offline SOS from ${packet.senderName} (Hops: ${currentHops + 1}) successfully!`,
+              time: new Date().toLocaleTimeString()
+            }, ...prev]);
+          } catch (err) {
+            console.error("Ghost Mesh: Failed to relay socket packet", err);
+          }
+        }
+      }
+    };
+
+    socket.on('mesh_receive_sos', handleSocketMeshMessage);
+
+    return () => {
+      socket.off('mesh_receive_sos', handleSocketMeshMessage);
+    };
+  }, [user, socket]);
+
   useEffect(() => {
     if (!socket || !user) return;
 

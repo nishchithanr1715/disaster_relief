@@ -30,9 +30,21 @@ const createRequest = async (req, res) => {
       }
     });
 
-    // Notify coordinators via Socket.io (handled in index.js via exported io)
+    // Notify coordinators via Socket.io with full victim details included
+    const fullRequest = await prisma.helpRequest.findUnique({
+      where: { id: request.id },
+      include: {
+        victim: {
+          include: {
+            user: {
+              select: { name: true, phone: true }
+            }
+          }
+        }
+      }
+    });
     const { io } = require('../../index');
-    io.emit('new_help_request', request);
+    io.emit('new_help_request', fullRequest);
 
     res.status(201).json(request);
   } catch (error) {
@@ -111,9 +123,33 @@ const updateRequestStatus = async (req, res) => {
       }
     });
 
+    // Fetch full request details and updater details for a rich socket notification payload
+    const fullRequest = await prisma.helpRequest.findUnique({
+      where: { id: request.id },
+      include: {
+        victim: {
+          include: {
+            user: {
+              select: { name: true, phone: true }
+            }
+          }
+        }
+      }
+    });
+
+    const updaterUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, role: true }
+    });
+
+    const socketPayload = {
+      ...fullRequest,
+      updater: updaterUser
+    };
+
     // Notify relevant parties
     const { io } = require('../../index');
-    io.emit('request_status_updated', request);
+    io.emit('request_status_updated', socketPayload);
 
     res.json(request);
   } catch (error) {
@@ -122,4 +158,85 @@ const updateRequestStatus = async (req, res) => {
   }
 };
 
-module.exports = { createRequest, getMyRequests, getAllRequests, updateRequestStatus };
+const relayOfflineRequest = async (req, res) => {
+  const { senderName, description, peopleCount, latitude, longitude, urgency, hops, relayChain } = req.body;
+  const updaterUserId = req.user.userId; // The volunteer or NGO admin who is relaying it
+
+  try {
+    // Find victim profile by senderName
+    let victimId;
+    const matchedUser = await prisma.user.findFirst({
+      where: { name: senderName, role: 'VICTIM' },
+      include: { victimProfile: true }
+    });
+
+    if (matchedUser && matchedUser.victimProfile) {
+      victimId = matchedUser.victimProfile.id;
+    } else {
+      // Fallback: Find the first victim profile in database
+      const firstVictim = await prisma.victimProfile.findFirst();
+      if (firstVictim) {
+        victimId = firstVictim.id;
+      } else {
+        return res.status(400).json({ message: 'No active victim profiles found to bind relay' });
+      }
+    }
+
+    // Deduplicate: check if there's already a pending/assigned request at these exact coordinates
+    const existing = await prisma.helpRequest.findFirst({
+      where: {
+        victimId,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        description,
+        status: 'PENDING'
+      }
+    });
+
+    if (existing) {
+      return res.status(200).json(existing);
+    }
+
+    // Create the help request
+    const request = await prisma.helpRequest.create({
+      data: {
+        victimId,
+        requestType: 'rescue',
+        description,
+        peopleCount: parseInt(peopleCount) || 1,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        priority: 'CRITICAL',
+        status: 'PENDING',
+        isOfflineRelayed: true,
+        offlineSenderName: senderName,
+        relayHops: parseInt(hops) || 1,
+        relayChain: JSON.stringify(relayChain)
+      }
+    });
+
+    // Notify coordinators via Socket.io with full details included
+    const fullRequest = await prisma.helpRequest.findUnique({
+      where: { id: request.id },
+      include: {
+        victim: {
+          include: {
+            user: {
+              select: { name: true, phone: true }
+            }
+          }
+        }
+      }
+    });
+
+    const { io } = require('../../index');
+    io.emit('new_help_request', fullRequest);
+
+    res.status(201).json(request);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error relaying offline request' });
+  }
+};
+
+module.exports = { createRequest, getMyRequests, getAllRequests, updateRequestStatus, relayOfflineRequest };

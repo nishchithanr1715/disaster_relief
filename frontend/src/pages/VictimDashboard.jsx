@@ -22,6 +22,16 @@ const VictimDashboard = () => {
   const socket = useSocket();
   const [notifications, setNotifications] = useState([]);
 
+  // Auto-dismiss notifications after 5 seconds
+  useEffect(() => {
+    if (notifications.length > 0) {
+      const timer = setTimeout(() => {
+        setNotifications(prev => prev.slice(0, -1));
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notifications]);
+
   const { data: requests, isLoading } = useQuery({
     queryKey: ['myRequests'],
     queryFn: getMyRequests
@@ -100,21 +110,29 @@ const VictimDashboard = () => {
 
         // Broadcast over local P2P Ghost Mesh Network
         try {
+          const meshPacket = {
+            senderName: user?.name || 'Victim',
+            message: payload.description,
+            peopleCount: payload.peopleCount,
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+            urgency: payload.urgency,
+            hops: 0,
+            relayChain: []
+          };
+
+          // Local tab broadcast
           const meshChannel = new BroadcastChannel('reliefsync-ghost-mesh');
           meshChannel.postMessage({
             type: 'OFFLINE_SOS_BROADCAST',
-            packet: {
-              senderName: user?.name || 'Victim',
-              message: payload.description,
-              peopleCount: payload.peopleCount,
-              latitude: payload.latitude,
-              longitude: payload.longitude,
-              urgency: payload.urgency,
-              hops: 0,
-              relayChain: []
-            }
+            packet: meshPacket
           });
           meshChannel.close();
+
+          // Physical device peer-to-peer radio socket simulation
+          if (socket) {
+            socket.emit('mesh_broadcast_sos', meshPacket);
+          }
         } catch (e) {
           console.error("Failed to broadcast SOS packet", e);
         }

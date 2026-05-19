@@ -59,6 +59,16 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('mesh_broadcast_sos', (packet) => {
+    console.log('Mesh Broadcast SOS Packet intercepted:', packet);
+    socket.broadcast.emit('mesh_receive_sos', packet);
+  });
+
+  socket.on('mesh_broadcast_chat', (packet) => {
+    console.log('Mesh Broadcast Chat Packet intercepted:', packet);
+    socket.broadcast.emit('mesh_receive_chat', packet);
+  });
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });

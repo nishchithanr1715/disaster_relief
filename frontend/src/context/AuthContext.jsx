@@ -15,9 +15,22 @@ export const AuthProvider = ({ children }) => {
         try {
           const userData = await getMe();
           setUser(userData);
+          localStorage.setItem('reliefsync_user_profile', JSON.stringify(userData));
         } catch (err) {
-          localStorage.removeItem('token');
-          setUser(null);
+          // If it's a network/offline error, do NOT log them out. Fallback to cached profile!
+          if (!err.response) {
+            const cachedUser = localStorage.getItem('reliefsync_user_profile');
+            if (cachedUser) {
+              setUser(JSON.parse(cachedUser));
+            } else {
+              setUser(null);
+            }
+          } else {
+            // Real authentication failure (e.g. 401, 403), remove session
+            localStorage.removeItem('token');
+            localStorage.removeItem('reliefsync_user_profile');
+            setUser(null);
+          }
         }
       }
       setLoading(false);
@@ -30,6 +43,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const data = await loginApi(credentials);
       localStorage.setItem('token', data.token);
+      localStorage.setItem('reliefsync_user_profile', JSON.stringify(data.user));
       setUser(data.user);
       return data.user;
     } catch (err) {
@@ -44,6 +58,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const data = await registerApi(userData);
       localStorage.setItem('token', data.token);
+      localStorage.setItem('reliefsync_user_profile', JSON.stringify(data.user));
       setUser(data.user);
       return data.user;
     } catch (err) {
@@ -55,6 +70,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('reliefsync_user_profile');
     setUser(null);
   };
 
