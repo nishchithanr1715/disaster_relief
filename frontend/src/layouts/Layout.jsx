@@ -415,7 +415,8 @@ const Layout = ({ children }) => {
       {user && (
         <button
           onClick={() => setIsPhoneOpen(!isPhoneOpen)}
-          className="fixed bottom-6 right-6 z-40 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-3 rounded-full shadow-xl flex items-center gap-2 hover:scale-105 active:scale-95 transition-all duration-200 border border-slate-700"
+          className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-[900] bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-3 rounded-full shadow-2xl flex items-center gap-2 hover:scale-105 active:scale-95 transition-all duration-200 border border-slate-700"
+          style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.5)' }}
         >
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
