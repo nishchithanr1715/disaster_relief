@@ -239,7 +239,7 @@ const MeshPhoneSimulator = ({ isOpen, onClose }) => {
           <div style={{flex:1, position:'relative', overflow:'hidden'}}>
             <iframe
               ref={iframeRef}
-              src="http://localhost:5173?noPhone=true"
+              src={`${window.location.origin}?noPhone=true`}
               title="ReliefSync – Virtual Device"
               style={{
                 width: '150%',
