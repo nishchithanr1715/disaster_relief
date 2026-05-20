@@ -183,6 +183,7 @@ const VictimDashboard = () => {
 
   useEffect(() => {
     // Initial fetch to cache real location coordinates immediately on dashboard open
+    let watchId = null;
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -193,6 +194,18 @@ const VictimDashboard = () => {
         (err) => console.warn("Init location cache deferred:", err.message),
         { enableHighAccuracy: true, timeout: 10000 }
       );
+
+      // Start watching the user's location continuously to always keep the cache updated as they move
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const lat = position.coords.latitude.toFixed(6);
+          const lng = position.coords.longitude.toFixed(6);
+          localStorage.setItem('reliefsync_last_location', JSON.stringify({ lat, lng }));
+          console.log("Location watched & updated in cache:", lat, lng);
+        },
+        (err) => console.warn("Background location tracking failed:", err.message),
+        { enableHighAccuracy: true, maximumAge: 30000, timeout: 27000 }
+      );
     }
 
     window.addEventListener('online', syncOfflineRequests);
@@ -201,6 +214,9 @@ const VictimDashboard = () => {
     }
     return () => {
       window.removeEventListener('online', syncOfflineRequests);
+      if (watchId !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId);
+      }
     };
   }, []);
 
@@ -383,7 +399,22 @@ const VictimDashboard = () => {
             Emergency Request
           </button>
           <button
-            onClick={() => setShowForm(true)}
+            onClick={() => {
+              const cached = localStorage.getItem('reliefsync_last_location');
+              let lat = '';
+              let lng = '';
+              if (cached) {
+                const parsed = JSON.parse(cached);
+                lat = parsed.lat;
+                lng = parsed.lng;
+              }
+              setFormData(prev => ({
+                ...prev,
+                latitude: lat,
+                longitude: lng
+              }));
+              setShowForm(true);
+            }}
             className="btn-secondary flex items-center gap-2"
           >
             <Plus size={20} />
