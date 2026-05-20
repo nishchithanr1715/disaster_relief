@@ -161,8 +161,8 @@ const VictimDashboard = () => {
             const { lat, lng } = JSON.parse(cached);
             submitSOS(lat, lng);
           } else {
-            const randomLat = (Math.random() * 0.1 + 12.97).toFixed(6);
-            const randomLng = (Math.random() * 0.1 + 77.59).toFixed(6);
+            const randomLat = (Math.random() * 0.05 + 12.5218).toFixed(6);
+            const randomLng = (Math.random() * 0.05 + 76.8951).toFixed(6);
             submitSOS(randomLat, randomLng);
           }
         },
@@ -174,8 +174,8 @@ const VictimDashboard = () => {
         const { lat, lng } = JSON.parse(cached);
         submitSOS(lat, lng);
       } else {
-        const randomLat = (Math.random() * 0.1 + 12.97).toFixed(6);
-        const randomLng = (Math.random() * 0.1 + 77.59).toFixed(6);
+        const randomLat = (Math.random() * 0.05 + 12.5218).toFixed(6);
+        const randomLng = (Math.random() * 0.05 + 76.8951).toFixed(6);
         submitSOS(randomLat, randomLng);
       }
     }
@@ -288,8 +288,8 @@ const VictimDashboard = () => {
 
     const payload = {
       ...formData,
-      latitude: finalLat ? parseFloat(finalLat) : parseFloat((Math.random() * 0.1 + 12.97).toFixed(6)),
-      longitude: finalLng ? parseFloat(finalLng) : parseFloat((Math.random() * 0.1 + 77.59).toFixed(6))
+      latitude: finalLat ? parseFloat(finalLat) : parseFloat((Math.random() * 0.05 + 12.5218).toFixed(6)),
+      longitude: finalLng ? parseFloat(finalLng) : parseFloat((Math.random() * 0.05 + 76.8951).toFixed(6))
     };
 
     if (!navigator.onLine) {

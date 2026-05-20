@@ -82,9 +82,17 @@ const DisasterMap = ({ requests = [], center = [12.9716, 77.5946], zoom = 12 }) 
                 )}
                 <p className="text-xs text-slate-600 mb-2">{request.description}</p>
                 <div className="flex justify-between items-center text-[10px] text-slate-400">
-                  <span>{request.peopleCount} people</span>
+                  <span>{request.peopleCount} {request.peopleCount === 1 ? 'person' : 'people'}</span>
                   <span>{request.status}</span>
                 </div>
+                {request.createdAt && (
+                  <div className="text-[9px] text-slate-400 border-t border-slate-100 pt-1.5 mt-1.5 flex justify-between items-center gap-2">
+                    <span>Reported:</span>
+                    <span className="font-semibold text-slate-500">
+                      {new Date(request.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                    </span>
+                  </div>
+                )}
               </div>
             </Popup>
           </Marker>
