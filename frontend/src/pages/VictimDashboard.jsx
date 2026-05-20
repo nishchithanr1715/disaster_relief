@@ -4,7 +4,7 @@ import { getMyRequests, createHelpRequest } from '../api/requests';
 import Layout from '../layouts/Layout';
 import useSocket from '../hooks/useSocket';
 import { useAuth } from '../context/AuthContext';
-import { Plus, MapPin, Users, AlertTriangle, Clock, CheckCircle2, XCircle, Activity, Bell, WifiOff, AlertOctagon } from 'lucide-react';
+import { Plus, MapPin, Users, AlertTriangle, Clock, CheckCircle2, XCircle, Activity, Bell, WifiOff, AlertOctagon, Sun, CloudRain, CloudLightning, Wind, Thermometer } from 'lucide-react';
 
 const VictimDashboard = () => {
   const { user } = useAuth();
@@ -21,6 +21,13 @@ const VictimDashboard = () => {
   const queryClient = useQueryClient();
   const socket = useSocket();
   const [notifications, setNotifications] = useState([]);
+  
+  // Alert/Weather state variables
+  const [showAlertForm, setShowAlertForm] = useState(false);
+  const [alertDescription, setAlertDescription] = useState('');
+  const [weatherData, setWeatherData] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
+  const [weatherAlert, setWeatherAlert] = useState(null);
 
   // Auto-dismiss notifications after 5 seconds
   useEffect(() => {
@@ -31,6 +38,215 @@ const VictimDashboard = () => {
       return () => clearTimeout(timer);
     }
   }, [notifications]);
+
+  // Fetch local weather updates dynamically and trigger auto-alerts for extreme conditions
+  useEffect(() => {
+    const fetchWeather = async () => {
+      setWeatherLoading(true);
+      try {
+        let lat = 12.5218; // Default Mandya
+        let lng = 76.8951;
+        const cached = localStorage.getItem('reliefsync_last_location');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          lat = parseFloat(parsed.lat) || lat;
+          lng = parseFloat(parsed.lng) || lng;
+        }
+
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true`);
+        if (!res.ok) throw new Error("Failed to fetch weather");
+        const data = await res.json();
+        
+        if (data && data.current_weather) {
+          const current = data.current_weather;
+          setWeatherData({
+            temp: current.temperature,
+            wind: current.windspeed,
+            code: current.weathercode,
+            time: current.time
+          });
+
+          // Check for extreme weather codes (Moderate/Heavy rain, violent rain showers, thunderstorms)
+          const extremeCodes = [63, 65, 81, 82, 95, 96, 99];
+          if (extremeCodes.includes(current.weathercode)) {
+            const warningText = `Severe weather warning (WMO Code ${current.weathercode}) detected in your sector! Expect flash flood/lightning hazards. Stay clear of low ground.`;
+            setWeatherAlert(warningText);
+
+            // Auto-send alert logic (throttle to once every 30 minutes)
+            const lastSent = localStorage.getItem('last_auto_weather_alert_time');
+            const now = Date.now();
+            if (!lastSent || now - parseInt(lastSent) > 30 * 60 * 1000) {
+              triggerAutomaticWeatherAlert(lat, lng, current.weathercode, current.temperature);
+              localStorage.setItem('last_auto_weather_alert_time', now.toString());
+            }
+          } else {
+            setWeatherAlert(null);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching weather status:", err);
+      } finally {
+        setWeatherLoading(false);
+      }
+    };
+
+    fetchWeather();
+    const interval = setInterval(fetchWeather, 5 * 60 * 1000); // Check weather every 5 minutes
+    return () => clearInterval(interval);
+  }, [socket]);
+
+  const triggerAutomaticWeatherAlert = (lat, lng, weatherCode, temp) => {
+    const baseMessage = `AUTOMATIC WEATHER ALERT: Extreme atmospheric hazard (WMO Code ${weatherCode}, ${temp}°C) detected in Mandya sector. High risk of flooding/lightning. Rescue operations must be cautious.`;
+    
+    const meshPacket = {
+      senderName: `WEATHER SYSTEM (AUTO)`,
+      message: baseMessage,
+      peopleCount: 1,
+      latitude: parseFloat(lat),
+      longitude: parseFloat(lng),
+      urgency: 'immediate',
+      hops: 0,
+      relayChain: []
+    };
+
+    // 1. Broadcast over local tab Ghost Mesh network
+    try {
+      const meshChannel = new BroadcastChannel('reliefsync-ghost-mesh');
+      meshChannel.postMessage({
+        type: 'OFFLINE_SOS_BROADCAST',
+        packet: meshPacket
+      });
+      meshChannel.close();
+    } catch (e) {
+      console.warn("BroadcastChannel auto weather alert error:", e);
+    }
+
+    // 2. Broadcast via socket connection
+    if (socket) {
+      socket.emit('mesh_broadcast_sos', meshPacket);
+    }
+
+    // 3. Show notification
+    setNotifications(prev => [
+      {
+        id: Date.now(),
+        message: `🚨 Automatic Alert Dispatched: Nearby rescue and volunteers have been alerted to extreme weather in your sector!`,
+        time: new Date().toLocaleTimeString()
+      },
+      ...prev
+    ]);
+  };
+
+  const handleSendManualAlert = async (e) => {
+    e.preventDefault();
+    if (!alertDescription.trim()) return;
+
+    let lat = 12.5218; // Default Mandya
+    let lng = 76.8951;
+    const cached = localStorage.getItem('reliefsync_last_location');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      lat = parseFloat(parsed.lat) || lat;
+      lng = parseFloat(parsed.lng) || lng;
+    }
+
+    const payloadMessage = `MANUAL HAZARD ALERT: ${alertDescription}`;
+
+    const meshPacket = {
+      senderName: user?.name || 'Victim',
+      message: payloadMessage,
+      peopleCount: 1,
+      latitude: lat,
+      longitude: lng,
+      urgency: 'immediate',
+      hops: 0,
+      relayChain: []
+    };
+
+    // 1. Send over Local P2P Ghost Mesh Network
+    try {
+      const meshChannel = new BroadcastChannel('reliefsync-ghost-mesh');
+      meshChannel.postMessage({
+        type: 'OFFLINE_SOS_BROADCAST',
+        packet: meshPacket
+      });
+      meshChannel.close();
+    } catch (err) {
+      console.warn("BroadcastChannel error:", err);
+    }
+
+    // 2. Send via Socket Connection
+    if (socket) {
+      socket.emit('mesh_broadcast_sos', meshPacket);
+    }
+
+    // 3. Save to database / local offline queue
+    if (!navigator.onLine) {
+      const newOfflineReq = {
+        id: `offline-${Date.now()}`,
+        requestType: 'rescue',
+        description: payloadMessage,
+        peopleCount: 1,
+        latitude: lat,
+        longitude: lng,
+        priority: 'CRITICAL',
+        urgency: 'immediate',
+        status: 'OFFLINE_QUEUED',
+        createdAt: new Date().toISOString()
+      };
+
+      const updatedQueue = [newOfflineReq, ...offlineRequests];
+      setOfflineRequests(updatedQueue);
+      localStorage.setItem('offline_help_requests', JSON.stringify(updatedQueue));
+
+      setNotifications(prev => [
+        {
+          id: Date.now(),
+          message: `📡 Alert saved offline. Broadcasted to nearby peers!`,
+          time: new Date().toLocaleTimeString()
+        },
+        ...prev
+      ]);
+    } else {
+      try {
+        await createHelpRequest({
+          requestType: 'rescue',
+          description: payloadMessage,
+          peopleCount: 1,
+          latitude: lat,
+          longitude: lng,
+          urgency: 'immediate'
+        });
+        
+        queryClient.invalidateQueries({ queryKey: ['myRequests'] });
+
+        setNotifications(prev => [
+          {
+            id: Date.now(),
+            message: `🚀 Real-time hazard alert successfully broadcasted to all rescue teams!`,
+            time: new Date().toLocaleTimeString()
+          },
+          ...prev
+        ]);
+      } catch (err) {
+        console.error("Failed to submit manual alert online:", err);
+      }
+    }
+
+    setAlertDescription('');
+    setShowAlertForm(false);
+  };
+
+  const getWeatherInfo = (code) => {
+    if (code === undefined || code === null) return { text: 'Unknown', icon: 'Sun', color: 'text-slate-400', bg: 'bg-slate-50' };
+    if (code === 0) return { text: 'Clear Sky', icon: 'Sun', color: 'text-amber-500', bg: 'bg-amber-50/50' };
+    if ([1, 2, 3].includes(code)) return { text: 'Partly Cloudy', icon: 'Sun', color: 'text-blue-400', bg: 'bg-blue-50/50' };
+    if ([45, 48].includes(code)) return { text: 'Foggy', icon: 'Wind', color: 'text-slate-400', bg: 'bg-slate-50' };
+    if ([51, 53, 55, 61].includes(code)) return { text: 'Light Rain', icon: 'CloudRain', color: 'text-sky-500', bg: 'bg-sky-50/50' };
+    if ([63, 65, 80, 81, 82].includes(code)) return { text: 'Heavy Rainfall', icon: 'CloudRain', color: 'text-blue-600', bg: 'bg-blue-50/50' };
+    if ([95, 96, 99].includes(code)) return { text: 'Severe Thunderstorm', icon: 'CloudLightning', color: 'text-rose-600', bg: 'bg-rose-50/50' };
+    return { text: 'Cloudy', icon: 'Sun', color: 'text-slate-400', bg: 'bg-slate-50' };
+  };
 
   const { data: requests, isLoading } = useQuery({
     queryKey: ['myRequests'],
@@ -420,6 +636,14 @@ const VictimDashboard = () => {
             <Plus size={20} />
             New Request
           </button>
+          <button
+            onClick={() => setShowAlertForm(true)}
+            className="bg-amber-500 hover:bg-amber-600 text-white font-extrabold px-5 py-2.5 rounded-xl shadow-lg hover:shadow-amber-500/20 active:scale-95 transition-all flex items-center gap-2"
+            title="Broadcast manual weather/hazard alert"
+          >
+            <Bell size={20} className="animate-bounce" />
+            Send Alert
+          </button>
         </div>
       </div>
 
@@ -542,58 +766,209 @@ const VictimDashboard = () => {
         </div>
       )}
 
-      {isLoading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-500"></div>
-        </div>
-      ) : (requests?.length === 0 && offlineRequests.length === 0) ? (
-        <div className="text-center py-20 bg-white rounded-2xl border-2 border-dashed border-slate-200">
-          <div className="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-            <AlertTriangle size={32} />
-          </div>
-          <h3 className="text-lg font-bold text-slate-900">No requests yet</h3>
-          <p className="text-slate-500 max-w-sm mx-auto mt-2">
-            If you need help with food, medical aid, or rescue, click the "New Request" button above.
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {[...offlineRequests, ...(requests || [])].map((request) => (
-            <div key={request.id} className="card hover:shadow-md transition-shadow">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getPriorityColor(request.priority)}`}>
-                      {request.priority}
-                    </span>
-                    <span className="text-slate-400 text-xs flex items-center gap-1">
-                      <Clock size={14} />
-                      {new Date(request.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                  <h3 className="font-bold text-lg text-slate-900 capitalize flex items-center gap-2">
-                    {request.requestType} Help
-                    <span className="text-slate-400 font-normal text-sm flex items-center gap-1">
-                      <Users size={14} /> {request.peopleCount} {request.peopleCount === 1 ? 'person' : 'people'}
-                    </span>
-                  </h3>
-                  <p className="text-slate-600 mt-1 line-clamp-2">{request.description}</p>
-                </div>
-                
-                <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl shrink-0">
-                  <div className="text-right hidden sm:block">
-                    <p className="text-xs text-slate-500 font-medium">Status</p>
-                    <p className="font-bold text-slate-900">{request.status}</p>
-                  </div>
-                  <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-100">
-                    {getStatusIcon(request.status)}
-                  </div>
-                </div>
-              </div>
+      {showAlertForm && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-amber-500 text-white">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <Bell size={24} className="animate-bounce" />
+                Broadcast Custom Alert
+              </h3>
+              <button onClick={() => setShowAlertForm(false)} className="hover:bg-white/10 p-1 rounded-lg">
+                <XCircle size={24} />
+              </button>
             </div>
-          ))}
+            
+            <form onSubmit={handleSendManualAlert} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">
+                  Alert Message & Details
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  className="input-field w-full"
+                  placeholder="Describe the hazard (e.g. Water level rising by 1 meter, severe landslide blocking road, heavy winds/lightning active...)"
+                  value={alertDescription}
+                  onChange={(e) => setAlertDescription(e.target.value)}
+                />
+              </div>
+
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex items-start gap-2.5 text-xs text-amber-800">
+                <AlertTriangle size={18} className="shrink-0 text-amber-600 mt-0.5" />
+                <p className="leading-relaxed">
+                  <strong>Notice:</strong> This alert will be broadcasted immediately across the offline ghost-mesh network to all nearby volunteers and NGO dashboards.
+                </p>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAlertForm(false)}
+                  className="btn-secondary flex-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-xl active:scale-95 transition-all flex-1"
+                >
+                  Broadcast Alert
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
+
+      {/* Main Grid: Left 2/3 is Request History, Right 1/3 is Weather Station */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-4">
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Request History</h2>
+          
+          {isLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-500"></div>
+            </div>
+          ) : (requests?.length === 0 && offlineRequests.length === 0) ? (
+            <div className="text-center py-20 bg-white rounded-2xl border-2 border-dashed border-slate-200">
+              <div className="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                <AlertTriangle size={32} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">No requests yet</h3>
+              <p className="text-slate-500 max-w-sm mx-auto mt-2">
+                If you need help with food, medical aid, or rescue, click the "New Request" button above.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {[...offlineRequests, ...(requests || [])].map((request) => (
+                <div key={request.id} className="card hover:shadow-md transition-shadow">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getPriorityColor(request.priority)}`}>
+                          {request.priority}
+                        </span>
+                        <span className="text-slate-400 text-xs flex items-center gap-1">
+                          <Clock size={14} />
+                          {new Date(request.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <h3 className="font-bold text-lg text-slate-900 capitalize flex items-center gap-2">
+                        {request.requestType} Help
+                        <span className="text-slate-400 font-normal text-sm flex items-center gap-1">
+                          <Users size={14} /> {request.peopleCount} {request.peopleCount === 1 ? 'person' : 'people'}
+                        </span>
+                      </h3>
+                      <p className="text-slate-600 mt-1 line-clamp-2">{request.description}</p>
+                    </div>
+                    
+                    <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl shrink-0">
+                      <div className="text-right hidden sm:block">
+                        <p className="text-xs text-slate-500 font-medium">Status</p>
+                        <p className="font-bold text-slate-900">{request.status}</p>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-100">
+                        {getStatusIcon(request.status)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Live Weather Station Column */}
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
+            {/* Background Accent */}
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-brand-100 to-indigo-100 rounded-full blur-2xl -mr-6 -mt-6"></div>
+            
+            <div className="flex items-center justify-between mb-4 relative z-10">
+              <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                <Activity size={20} className="text-brand-500 animate-pulse" />
+                Live Weather Monitor
+              </h3>
+              <span className="text-[10px] bg-slate-100 text-slate-500 font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                Real-Time
+              </span>
+            </div>
+
+            {weatherLoading ? (
+              <div className="flex flex-col items-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-brand-500 mb-2"></div>
+                <p className="text-xs text-slate-400">Retrieving local sensor data...</p>
+              </div>
+            ) : weatherData ? (
+              <div className="space-y-4">
+                {/* Current Condition Banner */}
+                <div className={`p-4 rounded-xl flex items-center gap-4 ${getWeatherInfo(weatherData.code).bg}`}>
+                  <div className="shrink-0 animate-bounce">
+                    {weatherData.code >= 95 ? (
+                      <CloudLightning size={40} className="text-rose-500" />
+                    ) : weatherData.code >= 63 ? (
+                      <CloudRain size={40} className="text-blue-500" />
+                    ) : (
+                      <Sun size={40} className="text-amber-500" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-slate-800 tracking-tight flex items-baseline">
+                      {weatherData.temp}°C
+                    </p>
+                    <p className={`font-bold text-sm ${getWeatherInfo(weatherData.code).color}`}>
+                      {getWeatherInfo(weatherData.code).text}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Details Grid */}
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="bg-slate-50/50 p-3 rounded-lg border border-slate-100 flex items-center gap-2">
+                    <Wind size={16} className="text-slate-400" />
+                    <div>
+                      <p className="text-slate-400 font-medium">Wind Speed</p>
+                      <p className="font-bold text-slate-700">{weatherData.wind} km/h</p>
+                    </div>
+                  </div>
+                  <div className="bg-slate-50/50 p-3 rounded-lg border border-slate-100 flex items-center gap-2">
+                    <MapPin size={16} className="text-slate-400" />
+                    <div>
+                      <p className="text-slate-400 font-medium">Sector</p>
+                      <p className="font-bold text-slate-700">Mandya Sector</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Weather Alert Banner */}
+                {weatherAlert ? (
+                  <div className="bg-rose-50 border border-rose-100 p-3.5 rounded-xl flex items-start gap-2.5 animate-pulse text-xs text-rose-800">
+                    <AlertTriangle size={18} className="shrink-0 text-rose-600 mt-0.5" />
+                    <div>
+                      <p className="font-extrabold mb-0.5 uppercase tracking-wide">🔴 Severe Threat Active</p>
+                      <p className="leading-relaxed">{weatherAlert}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-xl flex items-center gap-2.5 text-xs text-emerald-800">
+                    <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
+                    <div>
+                      <p className="font-extrabold uppercase tracking-wide">🟢 Atmospheric Status Safe</p>
+                      <p className="text-[11px] text-emerald-700">No severe threats flagged in this sector.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-slate-400 text-xs">
+                Unable to load local weather feeds. Check internet status.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </Layout>
   );
 };
