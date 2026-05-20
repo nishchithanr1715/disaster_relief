@@ -28,6 +28,7 @@ const VictimDashboard = () => {
   const [weatherData, setWeatherData] = useState(null);
   const [weatherLoading, setWeatherLoading] = useState(true);
   const [weatherAlert, setWeatherAlert] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Auto-dismiss notifications after 5 seconds
   useEffect(() => {
@@ -299,14 +300,14 @@ const VictimDashboard = () => {
       urgency: 'immediate'
     };
 
-    const submitSOS = (lat, lng) => {
+    const submitSOS = async (lat, lng) => {
       const payload = {
         ...basePayload,
         latitude: parseFloat(lat),
         longitude: parseFloat(lng)
       };
 
-      if (!navigator.onLine) {
+      const fallbackToOffline = () => {
         const newOfflineReq = {
           id: `offline-${Date.now()}`,
           requestType: payload.requestType,
@@ -353,12 +354,25 @@ const VictimDashboard = () => {
           console.error("Failed to broadcast SOS packet", e);
         }
 
-        const msg = "🚨 GHOST NETWORK BROADCAST ACTIVE! Device is offline. SOS relayed over local P2P Mesh Network.";
+        const msg = "🚨 GHOST NETWORK BROADCAST ACTIVE! Device is offline/unreachable. SOS relayed over local P2P Mesh Network.";
         setNotifications(prev => [{ id: Date.now(), message: msg }, ...prev]);
+      };
+
+      if (!navigator.onLine) {
+        fallbackToOffline();
       } else {
-        createMutation.mutate(payload);
-        const msg = "🚨 Emergency SOS request submitted successfully! Teams are being notified.";
-        setNotifications(prev => [{ id: Date.now(), message: msg }, ...prev]);
+        try {
+          setIsSubmitting(true);
+          await createHelpRequest(payload);
+          queryClient.invalidateQueries(['myRequests']);
+          const msg = "🚨 Emergency SOS request submitted successfully! Teams are being notified.";
+          setNotifications(prev => [{ id: Date.now(), message: msg }, ...prev]);
+        } catch (error) {
+          console.warn("Online SOS submission failed. Auto falling back to offline Mesh Relay!", error);
+          fallbackToOffline();
+        } finally {
+          setIsSubmitting(false);
+        }
       }
     };
 
@@ -487,7 +501,7 @@ const VictimDashboard = () => {
     }
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     let finalLat = formData.latitude;
@@ -508,8 +522,7 @@ const VictimDashboard = () => {
       longitude: finalLng ? parseFloat(finalLng) : parseFloat((Math.random() * 0.05 + 76.8951).toFixed(6))
     };
 
-    if (!navigator.onLine) {
-      // Create a simulated offline request
+    const fallbackToOffline = () => {
       const newOfflineReq = {
         id: `offline-${Date.now()}`,
         requestType: payload.requestType,
@@ -527,6 +540,35 @@ const VictimDashboard = () => {
       setOfflineRequests(updatedQueue);
       localStorage.setItem('offline_help_requests', JSON.stringify(updatedQueue));
 
+      // Broadcast over local P2P Ghost Mesh Network
+      try {
+        const meshPacket = {
+          senderName: user?.name || 'Victim',
+          message: payload.description,
+          peopleCount: parseInt(payload.peopleCount),
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+          urgency: payload.urgency,
+          hops: 0,
+          relayChain: []
+        };
+
+        // Local tab broadcast
+        const meshChannel = new BroadcastChannel('reliefsync-ghost-mesh');
+        meshChannel.postMessage({
+          type: 'OFFLINE_SOS_BROADCAST',
+          packet: meshPacket
+        });
+        meshChannel.close();
+
+        // Physical device peer-to-peer radio socket simulation
+        if (socket) {
+          socket.emit('mesh_broadcast_sos', meshPacket);
+        }
+      } catch (e) {
+        console.error("Failed to broadcast SOS packet from New Request", e);
+      }
+
       setShowForm(false);
       setFormData({
         requestType: 'rescue',
@@ -537,10 +579,34 @@ const VictimDashboard = () => {
         urgency: 'medium'
       });
 
-      const msg = "⚠️ Device is offline! Your SOS request has been saved securely on your device and will auto-sync when network is detected.";
+      const msg = "⚠️ Device is offline/unreachable! SOS saved securely and broadcasted over local P2P Mesh Network.";
       setNotifications(prev => [{ id: Date.now(), message: msg }, ...prev]);
+    };
+
+    if (!navigator.onLine) {
+      fallbackToOffline();
     } else {
-      createMutation.mutate(payload);
+      try {
+        setIsSubmitting(true);
+        await createHelpRequest(payload);
+        queryClient.invalidateQueries(['myRequests']);
+        setShowForm(false);
+        setFormData({
+          requestType: 'rescue',
+          description: '',
+          peopleCount: 1,
+          latitude: '',
+          longitude: '',
+          urgency: 'medium'
+        });
+        const msg = "🚨 Request submitted successfully! Rescue teams are notified.";
+        setNotifications(prev => [{ id: Date.now(), message: msg }, ...prev]);
+      } catch (error) {
+        console.warn("Online submission failed. Auto falling back to offline Mesh Relay!", error);
+        fallbackToOffline();
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -755,10 +821,10 @@ const VictimDashboard = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={createMutation.isPending}
+                  disabled={isSubmitting}
                   className="btn-primary flex-1"
                 >
-                  {createMutation.isPending ? 'Submitting...' : 'Submit Request'}
+                  {isSubmitting ? 'Submitting...' : 'Submit Request'}
                 </button>
               </div>
             </form>
