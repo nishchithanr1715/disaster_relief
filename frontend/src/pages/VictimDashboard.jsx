@@ -21,7 +21,24 @@ const VictimDashboard = () => {
   const queryClient = useQueryClient();
   const socket = useSocket();
   const [notifications, setNotifications] = useState([]);
-  
+  const [isSimOffline, setIsSimOffline] = useState(() => {
+    return localStorage.getItem('reliefsync_sim_offline') === 'true';
+  });
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setIsSimOffline(localStorage.getItem('reliefsync_sim_offline') === 'true');
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isSimOffline && navigator.onLine) {
+      syncOfflineRequests();
+    }
+  }, [isSimOffline]);
+
   // Alert/Weather state variables
   const [showAlertForm, setShowAlertForm] = useState(false);
   const [alertDescription, setAlertDescription] = useState('');
@@ -57,7 +74,7 @@ const VictimDashboard = () => {
         const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true`);
         if (!res.ok) throw new Error("Failed to fetch weather");
         const data = await res.json();
-        
+
         if (data && data.current_weather) {
           const current = data.current_weather;
           setWeatherData({
@@ -98,7 +115,7 @@ const VictimDashboard = () => {
 
   const triggerAutomaticWeatherAlert = (lat, lng, weatherCode, temp) => {
     const baseMessage = `AUTOMATIC WEATHER ALERT: Extreme atmospheric hazard (WMO Code ${weatherCode}, ${temp}°C) detected in Mandya sector. High risk of flooding/lightning. Rescue operations must be cautious.`;
-    
+
     const meshPacket = {
       senderName: `WEATHER SYSTEM (AUTO)`,
       message: baseMessage,
@@ -182,7 +199,7 @@ const VictimDashboard = () => {
     }
 
     // 3. Save to database / local offline queue
-    if (!navigator.onLine) {
+    if (!navigator.onLine || isSimOffline) {
       const newOfflineReq = {
         id: `offline-${Date.now()}`,
         requestType: 'rescue',
@@ -218,7 +235,7 @@ const VictimDashboard = () => {
           longitude: lng,
           urgency: 'immediate'
         });
-        
+
         queryClient.invalidateQueries({ queryKey: ['myRequests'] });
 
         setNotifications(prev => [
@@ -254,7 +271,7 @@ const VictimDashboard = () => {
     queryFn: getMyRequests
   });
 
-  const [offlineRequests, setOfflineRequests] = useState(() => 
+  const [offlineRequests, setOfflineRequests] = useState(() =>
     JSON.parse(localStorage.getItem('offline_help_requests') || '[]')
   );
 
@@ -358,7 +375,7 @@ const VictimDashboard = () => {
         setNotifications(prev => [{ id: Date.now(), message: msg }, ...prev]);
       };
 
-      if (!navigator.onLine) {
+      if (!navigator.onLine || isSimOffline) {
         fallbackToOffline();
       } else {
         try {
@@ -455,10 +472,10 @@ const VictimDashboard = () => {
       const handleStatusUpdate = (updatedRequest) => {
         // Check if the updated request belongs to this victim
         const isMyRequest = requests.some(req => req.id === updatedRequest.id);
-        
+
         if (isMyRequest) {
           queryClient.invalidateQueries(['myRequests']);
-          
+
           let message = '';
           if (updatedRequest.status === 'IN_PROGRESS') {
             message = `An NGO/Volunteer has accepted your ${updatedRequest.requestType} request and is on their way!`;
@@ -467,9 +484,9 @@ const VictimDashboard = () => {
           } else {
             message = `Your request status changed to ${updatedRequest.status}.`;
           }
-          
+
           setNotifications(prev => [{ id: Date.now(), message }, ...prev]);
-          
+
           // Auto remove notification after 5 seconds
           setTimeout(() => {
             setNotifications(prev => prev.slice(1));
@@ -503,7 +520,7 @@ const VictimDashboard = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     let finalLat = formData.latitude;
     let finalLng = formData.longitude;
 
@@ -583,7 +600,7 @@ const VictimDashboard = () => {
       setNotifications(prev => [{ id: Date.now(), message: msg }, ...prev]);
     };
 
-    if (!navigator.onLine) {
+    if (!navigator.onLine || isSimOffline) {
       fallbackToOffline();
     } else {
       try {
@@ -722,14 +739,14 @@ const VictimDashboard = () => {
                 <XCircle size={24} />
               </button>
             </div>
-            
+
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Type of Assistance</label>
                 <select
                   className="input-field"
                   value={formData.requestType}
-                  onChange={(e) => setFormData({...formData, requestType: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, requestType: e.target.value })}
                 >
                   <option value="rescue">Rescue / Evacuation</option>
                   <option value="medical">Medical Emergency</option>
@@ -746,7 +763,7 @@ const VictimDashboard = () => {
                   min="1"
                   className="input-field"
                   value={formData.peopleCount}
-                  onChange={(e) => setFormData({...formData, peopleCount: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, peopleCount: e.target.value })}
                 />
               </div>
 
@@ -757,10 +774,10 @@ const VictimDashboard = () => {
                     <button
                       key={level}
                       type="button"
-                      onClick={() => setFormData({...formData, urgency: level})}
+                      onClick={() => setFormData({ ...formData, urgency: level })}
                       className={`py-2 px-3 rounded-lg border-2 text-sm font-bold capitalize transition-all
-                        ${formData.urgency === level 
-                          ? 'border-brand-500 bg-brand-50 text-brand-700' 
+                        ${formData.urgency === level
+                          ? 'border-brand-500 bg-brand-50 text-brand-700'
                           : 'border-slate-100 text-slate-500 hover:border-slate-200'}`}
                     >
                       {level}
@@ -775,7 +792,7 @@ const VictimDashboard = () => {
                   className="input-field min-h-[100px]"
                   placeholder="Describe your situation, specific needs, and any landmarks..."
                   value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   required
                 />
               </div>
@@ -783,8 +800,8 @@ const VictimDashboard = () => {
               <div>
                 <div className="flex justify-between items-end mb-1">
                   <label className="block text-sm font-medium text-slate-700">Location Coordinates</label>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={handleGetLocation}
                     className="text-xs text-brand-600 font-bold hover:underline flex items-center gap-1"
                   >
@@ -798,7 +815,7 @@ const VictimDashboard = () => {
                     placeholder="Latitude"
                     className="input-field w-1/2"
                     value={formData.latitude}
-                    onChange={(e) => setFormData({...formData, latitude: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
                   />
                   <input
                     type="number"
@@ -806,7 +823,7 @@ const VictimDashboard = () => {
                     placeholder="Longitude"
                     className="input-field w-1/2"
                     value={formData.longitude}
-                    onChange={(e) => setFormData({...formData, longitude: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
                   />
                 </div>
               </div>
@@ -844,7 +861,7 @@ const VictimDashboard = () => {
                 <XCircle size={24} />
               </button>
             </div>
-            
+
             <form onSubmit={handleSendManualAlert} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1">
@@ -891,7 +908,7 @@ const VictimDashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-4">
           <h2 className="text-xl font-bold text-slate-800 mb-2">Request History</h2>
-          
+
           {isLoading ? (
             <div className="flex justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-500"></div>
@@ -929,7 +946,7 @@ const VictimDashboard = () => {
                       </h3>
                       <p className="text-slate-600 mt-1 line-clamp-2">{request.description}</p>
                     </div>
-                    
+
                     <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl shrink-0">
                       <div className="text-right hidden sm:block">
                         <p className="text-xs text-slate-500 font-medium">Status</p>
@@ -951,7 +968,7 @@ const VictimDashboard = () => {
           <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
             {/* Background Accent */}
             <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-brand-100 to-indigo-100 rounded-full blur-2xl -mr-6 -mt-6"></div>
-            
+
             <div className="flex items-center justify-between mb-4 relative z-10">
               <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
                 <Activity size={20} className="text-brand-500 animate-pulse" />

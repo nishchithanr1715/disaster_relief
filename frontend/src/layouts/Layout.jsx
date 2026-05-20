@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { LogOut, User, Home, Map, Package, Activity, Bell, MessageSquare, Sun, Moon, XCircle, MapPin } from 'lucide-react';
 import useSocket from '../hooks/useSocket';
 import { relayOfflineRequest } from '../api/requests';
+import MeshPhoneSimulator from '../components/MeshPhoneSimulator';
 
 const Layout = ({ children }) => {
   const { user, logout } = useAuth();
@@ -13,6 +14,7 @@ const Layout = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [selectedRequestForModal, setSelectedRequestForModal] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
+  const [isPhoneOpen, setIsPhoneOpen] = useState(false);
 
   // Sync theme class with local storage state
   useEffect(() => {
@@ -407,6 +409,25 @@ const Layout = ({ children }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Floating P2P Phone Simulator Button */}
+      {user && (
+        <button
+          onClick={() => setIsPhoneOpen(!isPhoneOpen)}
+          className="fixed bottom-6 right-6 z-40 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-3 rounded-full shadow-xl flex items-center gap-2 hover:scale-105 active:scale-95 transition-all duration-200 border border-slate-700"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
+          </span>
+          📱 P2P Mesh Phone
+        </button>
+      )}
+
+      {/* Slide-out Mesh Phone Simulator */}
+      {user && (
+        <MeshPhoneSimulator isOpen={isPhoneOpen} onClose={() => setIsPhoneOpen(false)} />
       )}
     </div>
   );
