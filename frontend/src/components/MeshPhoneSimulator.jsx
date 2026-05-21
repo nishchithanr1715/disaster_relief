@@ -434,23 +434,28 @@ const MeshPhoneSimulator = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        {/* Close button floating outside top-right of bezel */}
-        <button onClick={onClose} style={{
-          position:'absolute', top:-14, right:-14,
-          width:32, height:32, borderRadius:'50%',
-          background:'#ef4444', border:'2px solid #fff',
-          display:'flex', alignItems:'center', justifyContent:'center',
-          cursor:'pointer', boxShadow:'0 4px 12px rgba(0,0,0,0.4)',
-          zIndex: 1010,
-          transition:'transform 0.15s',
-        }}
-          onMouseEnter={e => e.currentTarget.style.transform='scale(1.15)'}
-          onMouseLeave={e => e.currentTarget.style.transform='scale(1)'}
-        >
-          <X size={16} color="#fff"/>
-        </button>
+      </div>
+      {/* END PHONE CHASSIS */}
+
+      {/* Close button — OUTSIDE phone chassis, INSIDE wrapper (not clipped) */}
+      <button onClick={onClose} style={{
+        position:'absolute', top:-10, right:-10,
+        width:36, height:36, borderRadius:'50%',
+        background:'#ef4444', border:'3px solid #fff',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        cursor:'pointer', boxShadow:'0 4px 16px rgba(0,0,0,0.5)',
+        zIndex: 1010,
+        transition:'transform 0.15s',
+      }}
+        onMouseEnter={e => e.currentTarget.style.transform='scale(1.15)'}
+        onMouseLeave={e => e.currentTarget.style.transform='scale(1)'}
+      >
+        <X size={18} color="#fff"/>
+      </button>
 
       </div>
+      {/* END WRAPPER */}
+
     </div>
   );
 };
