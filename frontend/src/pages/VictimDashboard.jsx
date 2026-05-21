@@ -798,33 +798,33 @@ const VictimDashboard = () => {
               </div>
 
               <div>
-                <div className="flex justify-between items-end mb-1">
-                  <label className="block text-sm font-medium text-slate-700">Location Coordinates</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Location Coordinates</label>
+                <div className="flex flex-col gap-3">
                   <button
                     type="button"
                     onClick={handleGetLocation}
-                    className="text-xs text-brand-600 font-bold hover:underline flex items-center gap-1"
+                    className="bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 font-bold py-2.5 px-4 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 w-full shadow-sm"
                   >
-                    <MapPin size={12} /> Get Current Location
+                    <MapPin size={18} /> Get Current Location Automatically
                   </button>
-                </div>
-                <div className="flex gap-4">
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="Latitude"
-                    className="input-field w-1/2"
-                    value={formData.latitude}
-                    onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
-                  />
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="Longitude"
-                    className="input-field w-1/2"
-                    value={formData.longitude}
-                    onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
-                  />
+                  <div className="flex gap-4">
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="Latitude"
+                      className="input-field w-1/2"
+                      value={formData.latitude}
+                      onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+                    />
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="Longitude"
+                      className="input-field w-1/2"
+                      value={formData.longitude}
+                      onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+                    />
+                  </div>
                 </div>
               </div>
 
