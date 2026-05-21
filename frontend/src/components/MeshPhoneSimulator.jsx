@@ -110,10 +110,13 @@ const MeshPhoneSimulator = ({ isOpen, onClose }) => {
   /* ────────────────── RENDER ───────────────────────────── */
   return (
     /* Backdrop dimmer */
-    <div className="fixed inset-0 z-[999] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-[999] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}>
+
+      {/* Wrapper so close button isn't clipped by phone's overflow:hidden */}
+      <div style={{ position: 'relative' }}>
 
       {/* ══════ PHONE CHASSIS ══════ */}
-      <div style={{
+      <div onClick={(e) => e.stopPropagation()} style={{
         width: 260,
         height: 540,
         background: 'linear-gradient(145deg, #1e293b, #0f172a)',
@@ -125,8 +128,6 @@ const MeshPhoneSimulator = ({ isOpen, onClose }) => {
         flexDirection: 'column',
         overflow: 'hidden',
         zIndex: 1000,
-        // Prevent click propagation to backdrop
-        onClick: (e) => e.stopPropagation()
       }}>
 
         {/* ── physical side buttons ── */}
